@@ -121,6 +121,7 @@ def build_report(
             "version": "0.1.0",
             "pipeline_mode": metadata.get("pipeline_mode", "research"),
             "timestamp": pd.Timestamp.now().isoformat(),
+            "model_hash": metadata.get("model_hash") or metadata.get("release_hash"),
             "release_hash": metadata.get("release_hash"),
         },
         "data_status": {

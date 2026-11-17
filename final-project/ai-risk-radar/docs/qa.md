@@ -21,14 +21,16 @@ tests/test_app.py::test_app_switch_to_detailed_mode PASSED      [100%]
 
 ## 2. Viewport Measurements & Layout Emulation
 
-Visual inspection was performed using headless Chromium across desktop and mobile viewports against a locally running Streamlit instance on port 8503:
+Visual inspection was performed using headless Chromium via Chrome DevTools Protocol (CDP) WebSocket communication across desktop and mobile viewports against a locally running Streamlit instance on port 8503.
+
+To eliminate timing race conditions where standard headless Chrome `--screenshot` captured premature loading states before React/WebSocket hydration (identified in Round 2 review), capture scripts polled `Runtime.evaluate` to confirm required DOM content (`Downside Risk Probability`, `Benchmark Strategy Comparison Matrix`) was visible prior to invoking `Page.captureScreenshot`:
 
 | Viewport Mode | Window Dimensions | `clientWidth` | `scrollWidth` | Overflow Status | Artifact Screenshot | Verification Notes |
 | :--- | :---: | :---: | :---: | :---: | :--- | :--- |
-| **Desktop (Compact)** | 1280 x 900 px | 1280 px | 1280 px | None (PASS) | `docs/screenshots/compact-desktop.png` | Centered layout container (~704px content width within 1280px viewport). KPI cards, risk badge, and allocation metrics cleanly aligned. |
-| **Mobile (Compact)** | 375 x 812 px | 375 px | 375 px | None (PASS) | `docs/screenshots/compact-mobile.png` | Multi-column allocation and KPI metrics collapse vertically into single column with zero horizontal clipping. |
-| **Desktop (Detailed)** | 1280 x 1400 px | 1280 px | 1280 px | None (PASS) | `docs/screenshots/detailed-desktop.png` | Benchmark strategy matrix, Brier diagnostics, reliability bins, causal features, and limitations rendered. |
-| **Mobile (Detailed)** | 375 x 1400 px | 375 px | 375 px | Contained table scroll (PASS) | `docs/screenshots/detailed-mobile.png` | Benchmark table contained in responsive horizontal scroll wrapper; page document element does not overflow. |
+| **Desktop (Compact)** | 1280 x 900 px | 1264 px | 1264 px | None (PASS) | `docs/screenshots/compact-desktop.png` | Centered layout container (~704px content width within 1264px client viewport, 16px vertical scroll gutter). Full KPI cards, risk level ('High'), 45.4% probability, and target allocation cleanly rendered (84.8 KB). |
+| **Mobile (Compact)** | 375 x 812 px | 375 px | 375 px | None (PASS) | `docs/screenshots/compact-mobile.png` | Emulated mobile viewport (`Emulation.setDeviceMetricsOverride`). Multi-column allocation and KPI metrics collapse vertically into single column with zero horizontal clipping (53.2 KB). |
+| **Desktop (Detailed)** | 1280 x 1400 px | 1264 px | 1264 px | None (PASS) | `docs/screenshots/detailed-desktop.png` | Benchmark strategy matrix, Brier diagnostics, reliability bins, causal features, and limitations cleanly rendered (146.6 KB). |
+| **Mobile (Detailed)** | 375 x 1400 px | 375 px | 375 px | Contained table scroll (PASS) | `docs/screenshots/detailed-mobile.png` | Benchmark table contained in responsive horizontal scroll wrapper; root page document element does not overflow (95.6 KB). |
 
 ---
 

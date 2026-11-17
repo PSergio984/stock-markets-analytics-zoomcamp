@@ -244,8 +244,10 @@ def main() -> None:
             st.markdown(f"- {lim}")
 
         # Provenance
+        model_h = c_view.get("identity", {}).get("model_hash") or c_view.get("identity", {}).get("release_hash", "N/A")
+        release_h = c_view.get("identity", {}).get("release_hash", "N/A")
         st.caption(
-            f"Artifact: `{filename}` | Release Hash: `{c_view.get('identity', {}).get('release_hash', 'N/A')}` | "
+            f"Artifact: `{filename}` | Model Hash: `{model_h[:8]}...` | Release Hash: `{release_h[:8]}...` | "
             f"Pipeline Mode: `{c_view.get('identity', {}).get('pipeline_mode', 'N/A')}`"
         )
 

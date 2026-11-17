@@ -30,6 +30,25 @@ def _compute_sha256(file_path: Path) -> str:
     return h.hexdigest()
 
 
+def _compute_policy_hash(selected_threshold: float | None, settings: Settings) -> str:
+    """Compute deterministic SHA256 of release policy and allocation rules."""
+    policy_payload = {
+        "selected_threshold": float(selected_threshold) if selected_threshold is not None else None,
+        "weights_growth": [float(w) for w in settings.weights_growth],
+        "weights_defensive": [float(w) for w in settings.weights_defensive],
+        "weights_fixed_baseline": [float(w) for w in settings.weights_fixed_baseline],
+        "cost_rate": float(settings.cost_rate),
+        "tickers": list(settings.tickers),
+    }
+    return hashlib.sha256(json.dumps(policy_payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _compute_release_hash(model_hash: str, data_hash: str, policy_hash: str) -> str:
+    """Compute compound SHA256 covering model weights, data manifest, and policy configuration."""
+    compound = f"{model_hash}:{data_hash}:{policy_hash}"
+    return hashlib.sha256(compound.encode("utf-8")).hexdigest()
+
+
 def run_research(settings: Settings, data_mode: str = "cache") -> Path:
     """Fit models and select strategy on validation partition, leaving test untouched."""
     raw_dir = Path(settings.raw_dir)
@@ -118,16 +137,22 @@ def run_research(settings: Settings, data_mode: str = "cache") -> Path:
     # 7. Release Manifest Persistence
     data_manifest_path = snapshot_dir / "manifest.json"
     data_hash = _compute_sha256(data_manifest_path) if data_manifest_path.is_file() else "unknown"
+    policy_hash = _compute_policy_hash(selected_threshold, settings)
+    compound_release_hash = _compute_release_hash(model_hash, data_hash, policy_hash)
 
     release_payload = {
         "release_version": "1.0.0",
         "hashes": {
             "model": model_hash,
             "data": data_hash,
+            "policy": policy_hash,
+            "release": compound_release_hash,
         },
         "model_file": str(model_path.relative_to(artifacts_dir.parent)),
         "selected_strategy": selected_key,
         "selected_threshold": selected_threshold,
+        "policy_hash": policy_hash,
+        "release_hash": compound_release_hash,
         "probability_status": rf_bundle.metadata.get("probability_status"),
         "fallback_reason": rf_bundle.metadata.get("reason"),
         "boundaries": splits.boundaries,
@@ -150,7 +175,8 @@ def run_research(settings: Settings, data_mode: str = "cache") -> Path:
         "probability_status": rf_bundle.metadata.get("probability_status"),
         "fallback_reason": rf_bundle.metadata.get("reason"),
         "selected_threshold": selected_threshold,
-        "release_hash": model_hash,
+        "model_hash": model_hash,
+        "release_hash": compound_release_hash,
         "cutoff_session": splits.boundaries["cutoff"],
         "diagnostics": diagnostics,
         "weights_growth": settings.weights_growth,
@@ -234,8 +260,17 @@ def run_final_test(
         raise FileNotFoundError(f"Release manifest not found: {rel_path}")
 
     release_data = json.loads(rel_path.read_text(encoding="utf-8"))
+
+    # Guard against reusing an already-consumed holdout
+    if "test_evaluation" in release_data:
+        raise ValueError(
+            "Holdout test partition has already been consumed for this release. "
+            "Config/policy changes cannot silently reuse a consumed holdout as untouched."
+        )
+
     expected_model_hash = release_data.get("hashes", {}).get("model")
     expected_data_hash = release_data.get("hashes", {}).get("data")
+    expected_policy_hash = release_data.get("hashes", {}).get("policy") or release_data.get("policy_hash")
     if not expected_model_hash:
         raise ValueError("Invalid release manifest: missing model hash")
 
@@ -253,19 +288,34 @@ def run_final_test(
 
     settings, _project_dir = _resolve_pipeline_settings(rel_path, config_path=config_path, settings=settings)
 
+    # Validate policy hash if present in release manifest
+    selected_threshold = release_data.get("selected_threshold")
+    actual_policy_hash = _compute_policy_hash(selected_threshold, settings)
+    if expected_policy_hash and actual_policy_hash != expected_policy_hash:
+        raise ValueError(
+            f"Policy / configuration mismatch on release: expected policy hash {expected_policy_hash}, "
+            f"got {actual_policy_hash}. Config/policy changes cannot silently reuse a consumed holdout as untouched."
+        )
+
     # Load cached snapshot
     snapshot_dir = Path(settings.raw_dir) / "snapshot"
     bundle = load_snapshot(snapshot_dir)
 
     # Validate data manifest hash against release data hash if tracked
-    if expected_data_hash and expected_data_hash != "unknown":
-        data_manifest_path = snapshot_dir / "manifest.json"
-        if data_manifest_path.is_file():
-            actual_data_hash = _compute_sha256(data_manifest_path)
-            if actual_data_hash != expected_data_hash:
-                raise ValueError(
-                    f"Hash mismatch on data snapshot: expected {expected_data_hash}, got {actual_data_hash}"
-                )
+    actual_data_hash = "unknown"
+    data_manifest_path = snapshot_dir / "manifest.json"
+    if data_manifest_path.is_file():
+        actual_data_hash = _compute_sha256(data_manifest_path)
+        if expected_data_hash and expected_data_hash != "unknown" and actual_data_hash != expected_data_hash:
+            raise ValueError(
+                f"Hash mismatch on data snapshot: expected {expected_data_hash}, got {actual_data_hash}"
+            )
+
+    compound_release_hash = (
+        release_data.get("hashes", {}).get("release")
+        or release_data.get("release_hash")
+        or _compute_release_hash(actual_model_hash, actual_data_hash, actual_policy_hash)
+    )
 
     rf_bundle = joblib.load(model_path)
 
@@ -331,7 +381,8 @@ def run_final_test(
         "probability_status": rf_bundle.metadata.get("probability_status"),
         "fallback_reason": rf_bundle.metadata.get("reason"),
         "selected_threshold": selected_threshold,
-        "release_hash": actual_model_hash,
+        "model_hash": actual_model_hash,
+        "release_hash": compound_release_hash,
         "cutoff_session": splits.boundaries["cutoff"],
         "diagnostics": diagnostics,
         "weights_growth": settings.weights_growth,
@@ -395,13 +446,25 @@ def run_latest(
     staleness = int((now_ny.normalize().tz_localize(None) - as_of_session).days)
 
     selected_threshold = release_data.get("selected_threshold")
+    actual_policy_hash = _compute_policy_hash(selected_threshold, settings)
+    actual_data_hash = "unknown"
+    data_manifest_path = snapshot_dir / "manifest.json"
+    if data_manifest_path.is_file():
+        actual_data_hash = _compute_sha256(data_manifest_path)
+
+    compound_release_hash = (
+        release_data.get("hashes", {}).get("release")
+        or release_data.get("release_hash")
+        or _compute_release_hash(actual_model_hash, actual_data_hash, actual_policy_hash)
+    )
 
     metadata = {
         "pipeline_mode": "latest",
         "probability_status": rf_bundle.metadata.get("probability_status"),
         "fallback_reason": rf_bundle.metadata.get("reason"),
         "selected_threshold": selected_threshold,
-        "release_hash": actual_model_hash,
+        "model_hash": actual_model_hash,
+        "release_hash": compound_release_hash,
         "cutoff_session": as_of_session.strftime("%Y-%m-%d"),
         "staleness_sessions": staleness,
         "refresh_status": "ok",
