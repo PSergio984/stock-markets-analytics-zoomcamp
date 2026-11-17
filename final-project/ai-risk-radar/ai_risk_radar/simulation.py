@@ -38,16 +38,22 @@ def _solve_post_trade_equity(
 
 def weekly_targets(
     risk: pd.Series,
-    bundle: DataBundle,
+    bundle_or_sessions: DataBundle | pd.DatetimeIndex | pd.DataFrame,
     settings: Settings,
     threshold: float,
 ) -> pd.DataFrame:
     """Generate weekly target allocations with signal on week's last session and execution next session close."""
-    sessions = pd.DatetimeIndex(bundle.sessions)
+    if isinstance(bundle_or_sessions, DataBundle):
+        sessions = pd.DatetimeIndex(bundle_or_sessions.sessions)
+    elif isinstance(bundle_or_sessions, pd.DataFrame):
+        sessions = pd.DatetimeIndex(bundle_or_sessions.index)
+    else:
+        sessions = pd.DatetimeIndex(bundle_or_sessions)
+
     tickers = list(settings.tickers)
     targets = pd.DataFrame(np.nan, index=sessions, columns=tickers)
 
-    # Initial funding on session 0 to growth allocation
+    # Initial funding on session 0 of this simulated period
     targets.iloc[0] = list(settings.weights_growth)
 
     # Group sessions by calendar year and ISO week
@@ -70,7 +76,7 @@ def weekly_targets(
                 else settings.weights_growth
             )
 
-            # Find next trading session in bundle for execution
+            # Find next trading session in sessions for execution
             future_sessions = sessions[sessions > signal_session]
             if len(future_sessions) > 0:
                 exec_session = future_sessions[0]
@@ -113,9 +119,18 @@ def simulate(
             gross_return = 0.0
 
         # Check for rebalance target on this session
-        target_row = targets.loc[dt, tickers]
-        if not target_row.isna().all():
+        target_row = targets.loc[dt, tickers] if dt in targets.index else pd.Series(np.nan, index=tickers)
+        if i == 0 and target_row.isna().all():
+            target_weights = np.array(settings.weights_growth, dtype=float)
+            should_rebalance = True
+        elif not target_row.isna().all():
             target_weights = target_row.values.astype(float)
+            should_rebalance = True
+        else:
+            target_weights = h_pre / v_pre if v_pre > 0 else np.array(settings.weights_growth, dtype=float)
+            should_rebalance = False
+
+        if should_rebalance:
             v_post_new = _solve_post_trade_equity(v_pre, h_pre, target_weights, cost_rate)
             h_post_new = target_weights * v_post_new
             cost_charged = v_pre - v_post_new
@@ -163,31 +178,35 @@ def simulate(
     )
 
 
-def benchmark_targets(bundle: DataBundle, settings: Settings) -> dict[str, pd.DataFrame]:
+def benchmark_targets(
+    bundle: DataBundle,
+    settings: Settings,
+    sessions: pd.DatetimeIndex | None = None,
+) -> dict[str, pd.DataFrame]:
     """Generate benchmark allocation schedules: growth buy-and-hold, fixed defensive, and momentum."""
-    sessions = pd.DatetimeIndex(bundle.sessions)
+    target_sessions = pd.DatetimeIndex(bundle.sessions) if sessions is None else pd.DatetimeIndex(sessions)
     tickers = list(settings.tickers)
 
-    # 1. Growth Buy and Hold: trade once at session 0, then hold and drift
-    bnh = pd.DataFrame(np.nan, index=sessions, columns=tickers)
+    # 1. Growth Buy and Hold: trade once at session 0 of this period, then hold and drift
+    bnh = pd.DataFrame(np.nan, index=target_sessions, columns=tickers)
     bnh.iloc[0] = list(settings.weights_growth)
 
     # 2. Fixed Defensive Weekly: rebalance weekly to fixed baseline
-    defensive_weekly = pd.DataFrame(np.nan, index=sessions, columns=tickers)
+    defensive_weekly = pd.DataFrame(np.nan, index=target_sessions, columns=tickers)
     defensive_weekly.iloc[0] = list(settings.weights_fixed_baseline)
 
     iso_cal = pd.DataFrame(
-        {"year": sessions.isocalendar().year, "week": sessions.isocalendar().week},
-        index=sessions,
+        {"year": target_sessions.isocalendar().year, "week": target_sessions.isocalendar().week},
+        index=target_sessions,
     )
     for _, group in iso_cal.groupby(["year", "week"]):
         sig_dt = group.index[-1]
-        future_sess = sessions[sessions > sig_dt]
+        future_sess = target_sessions[target_sessions > sig_dt]
         if len(future_sess) > 0:
             defensive_weekly.loc[future_sess[0]] = list(settings.weights_fixed_baseline)
 
     # 3. Trailing 63-Session Basket Momentum Policy
-    mom = pd.DataFrame(np.nan, index=sessions, columns=tickers)
+    mom = pd.DataFrame(np.nan, index=target_sessions, columns=tickers)
     mom.iloc[0] = list(settings.weights_growth)
 
     prices = bundle.adjusted_close
