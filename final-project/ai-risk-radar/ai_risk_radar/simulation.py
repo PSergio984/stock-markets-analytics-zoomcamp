@@ -169,7 +169,7 @@ def simulate(
     daily_df = pd.DataFrame(daily_records, index=sessions)
     trades_df = pd.DataFrame(trade_records)
 
-    metrics = compute_metrics(daily_df, trades_df)
+    metrics = compute_metrics(daily_df, trades_df, initial_capital=settings.initial_capital)
 
     return BacktestResult(
         daily=daily_df,
@@ -222,7 +222,7 @@ def benchmark_targets(
                 if basket_ret63.loc[sig_dt] >= 0.0
                 else settings.weights_defensive
             )
-            future_sess = sessions[sessions > sig_dt]
+            future_sess = target_sessions[target_sessions > sig_dt]
             if len(future_sess) > 0:
                 mom.loc[future_sess[0]] = list(w)
 

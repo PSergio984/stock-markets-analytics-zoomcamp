@@ -18,10 +18,10 @@ def _clean_json_value(val: object) -> object:
         if math.isnan(val) or math.isinf(val):
             return None
         return float(val)
-    if isinstance(val, (int, np.integer)):
-        return int(val)
     if isinstance(val, (bool, np.bool_)):
         return bool(val)
+    if isinstance(val, (int, np.integer)):
+        return int(val)
     if isinstance(val, (pd.Timestamp, pd.Period)):
         return val.isoformat()
     if isinstance(val, dict):

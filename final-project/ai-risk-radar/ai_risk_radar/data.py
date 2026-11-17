@@ -184,9 +184,6 @@ def fetch_prices(settings: Settings, as_of: pd.Timestamp | None = None) -> DataB
     if raw_df.empty:
         raise RuntimeError(f"yfinance returned an empty dataset after {max_retries} attempts: {last_err}")
 
-    if raw_df.empty:
-        raise RuntimeError("yfinance returned an empty dataset")
-
     # Extract Adj Close and Volume
     if isinstance(raw_df.columns, pd.MultiIndex):
         adj_close = raw_df["Adj Close"][tickers_list].copy()

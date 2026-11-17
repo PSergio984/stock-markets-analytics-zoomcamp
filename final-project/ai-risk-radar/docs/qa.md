@@ -1,12 +1,12 @@
 # AI Investment Risk Radar: QA & Visual Verification Report
 
-This document records the visual and automated QA verification for Task 6 (Two-Mode Dashboard) of the AI Investment Risk Radar application.
+This document records the visual, layout, and automated QA verification for Task 6 and Round 1 review findings of the AI Investment Risk Radar application.
 
 ---
 
 ## 1. Automated App Testing (`streamlit.testing.v1.AppTest`)
 
-The test suite at `tests/test_app.py` exercises the Streamlit component tree in memory without opening a physical browser:
+The test suite at `tests/test_app.py` exercises the Streamlit component tree in memory:
 - `test_app_renders_default_compact_mode`: Verified that `app.py` boots in `Compact` mode with 0 unhandled exceptions and displays all KPI metrics, target allocations, and risk definitions.
 - `test_app_switch_to_detailed_mode`: Verified that toggling the view mode radio widget to `Detailed` renders the full quantitative cockpit (comparisons matrix, reliability diagnostics, causal feature list, limitations) without modifying any identity, risk level, or performance values.
 
@@ -19,21 +19,26 @@ tests/test_app.py::test_app_switch_to_detailed_mode PASSED      [100%]
 
 ---
 
-## 2. Viewport & Layout Emulation
+## 2. Viewport Measurements & Layout Emulation
 
-Visual inspection was performed using headless Chromium across desktop and mobile viewports against a locally running Streamlit instance on port 8502:
+Visual inspection was performed using headless Chromium across desktop and mobile viewports against a locally running Streamlit instance on port 8503:
 
-| Viewport Mode | Window Dimensions | Artifact | Verification Notes |
-| :--- | :--- | :--- | :--- |
-| **Desktop (Compact)** | 1280 x 900 px | `docs/screenshots/compact-desktop.png` | Zero horizontal scroll. Radio selector, risk badge, target allocation columns, and KPI metrics aligned cleanly. |
-| **Mobile (Compact)** | 375 x 812 px | `docs/screenshots/compact-mobile.png` | Responsive multi-column collapse. Allocation metrics stack vertically with readable typography and zero content clipping. |
+| Viewport Mode | Window Dimensions | `clientWidth` | `scrollWidth` | Overflow Status | Artifact Screenshot | Verification Notes |
+| :--- | :---: | :---: | :---: | :---: | :--- | :--- |
+| **Desktop (Compact)** | 1280 x 900 px | 1280 px | 1280 px | None (PASS) | `docs/screenshots/compact-desktop.png` | Centered layout container (~704px content width within 1280px viewport). KPI cards, risk badge, and allocation metrics cleanly aligned. |
+| **Mobile (Compact)** | 375 x 812 px | 375 px | 375 px | None (PASS) | `docs/screenshots/compact-mobile.png` | Multi-column allocation and KPI metrics collapse vertically into single column with zero horizontal clipping. |
+| **Desktop (Detailed)** | 1280 x 1400 px | 1280 px | 1280 px | None (PASS) | `docs/screenshots/detailed-desktop.png` | Benchmark strategy matrix, Brier diagnostics, reliability bins, causal features, and limitations rendered. |
+| **Mobile (Detailed)** | 375 x 1400 px | 375 px | 375 px | Contained table scroll (PASS) | `docs/screenshots/detailed-mobile.png` | Benchmark table contained in responsive horizontal scroll wrapper; page document element does not overflow. |
 
 ---
 
-## 3. Visual Invariant Checklist
+## 3. Visual & Functional Invariant Checklist
 
-- [x] **Default Mode:** Application defaults to `Compact` view on initial load.
+- [x] **Default Mode:** Application defaults to `Compact` view on initial load without query parameters.
+- [x] **Query Param Deep-Linking:** URL parameter `?view=detailed` correctly defaults to Detailed mode for direct bookmarks and headless audit tools.
 - [x] **Shared Identity:** Switching to `Detailed` view preserves exact same as-of session, risk probability (`45.4%`), risk level (`High`), strategy mode (`Growth`), and performance metrics.
+- [x] **Dynamic Subheader:** Performance snapshot subheader dynamically adapts to loaded partition: e.g., `📈 Performance Snapshot (Test Partition)` or `📈 Performance Snapshot (Validation Partition)`.
+- [x] **Risk Badge Tooltip:** Risk level badge tooltip accurately reflects implemented thresholds: `High (>=35%), Medium (20-35%), Low (<20%), or Unavailable.`
 - [x] **Loss Definition Transparency:** Downside risk event is explicitly defined as `Probability of reference basket (50% SOXX / 50% XLK) total return <= -5.0% over next 20 trading sessions`.
 - [x] **Units Precision:** Total return differences between strategies are formatted in percentage points (`pp`), avoiding deceptive relative percentage representations.
 - [x] **Honest Disclaimers:** Visible callout documents proxy ETF limitations, execution delay at next-session close with 10 bps slippage, and zero risk-free Sharpe ratio convention.

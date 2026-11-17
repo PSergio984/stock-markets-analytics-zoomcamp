@@ -4,7 +4,11 @@ import numpy as np
 import pandas as pd
 
 
-def compute_metrics(daily: pd.DataFrame, trades: pd.DataFrame) -> dict[str, float | None]:
+def compute_metrics(
+    daily: pd.DataFrame,
+    trades: pd.DataFrame,
+    initial_capital: float | None = None,
+) -> dict[str, float | None]:
     """Compute annualized CAGR, max drawdown, Sharpe (rf=0), volatility, turnover, and occupancy."""
     if daily.empty:
         return {
@@ -32,18 +36,25 @@ def compute_metrics(daily: pd.DataFrame, trades: pd.DataFrame) -> dict[str, floa
             "total_cost": None,
         }
 
-    v_start = float(equity[0])
+    v_start = float(initial_capital) if initial_capital is not None and initial_capital > 0 else float(equity[0])
     v_end = float(equity[-1])
     total_ret = float((v_end - v_start) / v_start)
 
     # CAGR: (V_end / V_start) ** (252 / (N - 1)) - 1
     years = (n - 1) / 252.0
-    cagr = float((v_end / v_start) ** (1.0 / years) - 1.0) if years > 0 and v_end > 0 else None
+    cagr = float((v_end / v_start) ** (1.0 / years) - 1.0) if years > 0 and v_start > 0 and v_end > 0 else None
 
     # Max Drawdown
-    peaks = np.maximum.accumulate(equity)
-    drawdowns = (equity - peaks) / peaks
-    max_dd = float(np.min(drawdowns))
+    if initial_capital is not None and initial_capital > 0:
+        # Include initial capital as the peak baseline prior to initial funding cost
+        full_series = np.concatenate([[float(initial_capital)], equity])
+        peaks = np.maximum.accumulate(full_series)
+        drawdowns = (full_series - peaks) / peaks
+        max_dd = float(np.min(drawdowns))
+    else:
+        peaks = np.maximum.accumulate(equity)
+        drawdowns = (equity - peaks) / peaks
+        max_dd = float(np.min(drawdowns))
 
     # Daily net returns
     if "net_return" in daily.columns:

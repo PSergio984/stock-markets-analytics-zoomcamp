@@ -18,10 +18,12 @@ def main() -> None:
     # Final Test Command
     test_parser = subparsers.add_parser("final-test", help="Evaluate frozen release on untouched holdout test partition")
     test_parser.add_argument("--release", default="artifacts/release.json", help="Path to release manifest")
+    test_parser.add_argument("--config", default=None, help="Optional path to configuration file")
 
     # Latest Inference Command
     lat_parser = subparsers.add_parser("latest", help="Generate real-time risk estimate using frozen model")
     lat_parser.add_argument("--release", default="artifacts/release.json", help="Path to release manifest")
+    lat_parser.add_argument("--config", default=None, help="Optional path to configuration file")
     lat_parser.add_argument("--data-mode", choices=["refresh", "cache"], default="cache", help="Data mode: refresh or cache")
 
     args = parser.parse_args()
@@ -31,10 +33,10 @@ def main() -> None:
         out = run_research(settings, data_mode=args.data_mode)
         print(f"Research completed successfully. Report generated at: {out}")
     elif args.command == "final-test":
-        out = run_final_test(args.release)
+        out = run_final_test(args.release, config_path=args.config)
         print(f"Final holdout test evaluated. Report generated at: {out}")
     elif args.command == "latest":
-        out = run_latest(args.release, data_mode=args.data_mode)
+        out = run_latest(args.release, data_mode=args.data_mode, config_path=args.config)
         print(f"Latest risk report published at: {out}")
 
 

@@ -69,10 +69,11 @@ def main() -> None:
     )
 
     # Mode Selector
+    default_idx = 1 if st.query_params.get("view", "").lower() == "detailed" else 0
     mode = st.radio(
         "View Mode",
         options=["Compact", "Detailed"],
-        index=0,
+        index=default_idx,
         horizontal=True,
         help="Compact is designed for quick daily briefings; Detailed provides full quantitative diagnostics.",
     )
@@ -110,7 +111,7 @@ def main() -> None:
         st.metric(
             label="Risk Level",
             value=c_view["risk_level"],
-            help="High (>50%), Medium (35-50%), Low (<35%), or Unavailable.",
+            help="High (>=35%), Medium (20-35%), Low (<20%), or Unavailable.",
         )
 
     with col2:
@@ -145,7 +146,8 @@ def main() -> None:
     # Performance Snapshot
     metrics = c_view.get("selected_metrics")
     if metrics:
-        st.subheader("📈 Performance Snapshot (Holdout Test Partition)")
+        partition_name = c_view.get("evaluation_partition", "Test").title()
+        st.subheader(f"📈 Performance Snapshot ({partition_name} Partition)")
         p_cols = st.columns(5)
         p_cols[0].metric("CAGR", f"{metrics.get('cagr', 0.0):.1%}")
         p_cols[1].metric("Max Drawdown", f"{metrics.get('max_drawdown', 0.0):.1%}")

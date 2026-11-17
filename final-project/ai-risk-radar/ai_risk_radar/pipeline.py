@@ -164,14 +164,80 @@ def run_research(settings: Settings, data_mode: str = "cache") -> Path:
     return save_report(report, report_path)
 
 
-def run_final_test(release_manifest: Path | str) -> Path:
+def _resolve_pipeline_settings(
+    release_path: Path | str,
+    config_path: Path | str | None = None,
+    settings: Settings | None = None,
+) -> tuple[Settings, Path]:
+    """Resolve settings and project directory relative to release manifest or explicit config."""
+    rel_path = Path(release_path).resolve()
+    artifacts_dir = rel_path.parent
+    project_dir = artifacts_dir.parent
+
+    if settings is not None:
+        return settings, project_dir
+
+    if config_path is not None:
+        cfg_file = Path(config_path).resolve()
+    elif (project_dir / "config.json").is_file():
+        cfg_file = project_dir / "config.json"
+    elif Path("config.json").is_file():
+        cfg_file = Path("config.json").resolve()
+    else:
+        raise FileNotFoundError(
+            f"Configuration file not found for release at {rel_path}. Specify config_path explicitly."
+        )
+
+    loaded_settings = load_settings(cfg_file)
+
+    raw_dir = Path(loaded_settings.raw_dir)
+    if not raw_dir.is_absolute():
+        raw_dir = (project_dir / raw_dir).resolve()
+
+    processed_dir = Path(loaded_settings.processed_dir)
+    if not processed_dir.is_absolute():
+        processed_dir = (project_dir / processed_dir).resolve()
+
+    artifacts = Path(loaded_settings.artifacts_dir)
+    if not artifacts.is_absolute():
+        artifacts = (project_dir / artifacts).resolve()
+
+    resolved_settings = Settings(
+        tickers=loaded_settings.tickers,
+        acquisition_start=loaded_settings.acquisition_start,
+        source=loaded_settings.source,
+        target_horizon=loaded_settings.target_horizon,
+        target_threshold=loaded_settings.target_threshold,
+        weights_growth=loaded_settings.weights_growth,
+        weights_defensive=loaded_settings.weights_defensive,
+        weights_fixed_baseline=loaded_settings.weights_fixed_baseline,
+        candidate_thresholds=loaded_settings.candidate_thresholds,
+        cost_rate=loaded_settings.cost_rate,
+        cost_sensitivities=loaded_settings.cost_sensitivities,
+        random_seed=loaded_settings.random_seed,
+        initial_capital=loaded_settings.initial_capital,
+        raw_dir=raw_dir,
+        processed_dir=processed_dir,
+        artifacts_dir=artifacts,
+    )
+    return resolved_settings, project_dir
+
+
+def run_final_test(
+    release_manifest: Path | str,
+    config_path: Path | str | None = None,
+    settings: Settings | None = None,
+) -> Path:
     """Evaluate frozen release model and selected strategy strictly once on untouched test split."""
-    rel_path = Path(release_manifest)
+    rel_path = Path(release_manifest).resolve()
     if not rel_path.is_file():
         raise FileNotFoundError(f"Release manifest not found: {rel_path}")
 
     release_data = json.loads(rel_path.read_text(encoding="utf-8"))
-    expected_model_hash = release_data["hashes"]["model"]
+    expected_model_hash = release_data.get("hashes", {}).get("model")
+    expected_data_hash = release_data.get("hashes", {}).get("data")
+    if not expected_model_hash:
+        raise ValueError("Invalid release manifest: missing model hash")
 
     # Model file resolution
     artifacts_dir = rel_path.parent
@@ -185,12 +251,23 @@ def run_final_test(release_manifest: Path | str) -> Path:
             f"Hash mismatch on frozen model: expected {expected_model_hash}, got {actual_model_hash}"
         )
 
-    rf_bundle = joblib.load(model_path)
-    settings = load_settings("config.json")
+    settings, _project_dir = _resolve_pipeline_settings(rel_path, config_path=config_path, settings=settings)
 
     # Load cached snapshot
     snapshot_dir = Path(settings.raw_dir) / "snapshot"
     bundle = load_snapshot(snapshot_dir)
+
+    # Validate data manifest hash against release data hash if tracked
+    if expected_data_hash and expected_data_hash != "unknown":
+        data_manifest_path = snapshot_dir / "manifest.json"
+        if data_manifest_path.is_file():
+            actual_data_hash = _compute_sha256(data_manifest_path)
+            if actual_data_hash != expected_data_hash:
+                raise ValueError(
+                    f"Hash mismatch on data snapshot: expected {expected_data_hash}, got {actual_data_hash}"
+                )
+
+    rf_bundle = joblib.load(model_path)
 
     feat_set = build_features(bundle, settings)
     from ai_risk_radar.splits import make_splits
@@ -277,14 +354,21 @@ def run_final_test(release_manifest: Path | str) -> Path:
     return report_path
 
 
-def run_latest(release_manifest: Path | str, data_mode: str = "cache") -> Path:
+def run_latest(
+    release_manifest: Path | str,
+    data_mode: str = "cache",
+    config_path: Path | str | None = None,
+    settings: Settings | None = None,
+) -> Path:
     """Generate latest real-time risk estimate and allocation suggestion using frozen release model."""
-    rel_path = Path(release_manifest)
+    rel_path = Path(release_manifest).resolve()
     if not rel_path.is_file():
         raise FileNotFoundError(f"Release manifest not found: {rel_path}")
 
     release_data = json.loads(rel_path.read_text(encoding="utf-8"))
-    expected_model_hash = release_data["hashes"]["model"]
+    expected_model_hash = release_data.get("hashes", {}).get("model")
+    if not expected_model_hash:
+        raise ValueError("Invalid release manifest: missing model hash")
 
     artifacts_dir = rel_path.parent
     model_path = artifacts_dir / "models" / "random_forest.joblib"
@@ -293,7 +377,7 @@ def run_latest(release_manifest: Path | str, data_mode: str = "cache") -> Path:
         raise ValueError("Hash mismatch on frozen demonstration model")
 
     rf_bundle = joblib.load(model_path)
-    settings = load_settings("config.json")
+    settings, _project_dir = _resolve_pipeline_settings(rel_path, config_path=config_path, settings=settings)
     snapshot_dir = Path(settings.raw_dir) / "snapshot"
 
     if data_mode == "refresh":

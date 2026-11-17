@@ -30,3 +30,8 @@ htmlcov/
 
 # Streamlit
 .streamlit/
+
+# Packaging & Builds
+*.egg-info/
+build/
+dist/
