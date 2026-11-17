@@ -175,3 +175,149 @@ def test_agy_11_identity_distinct_model_and_release_hashes():
     assert len(compound_release_hash) == 64
     assert len(model_hash) == 64
 
+
+def _setup_pipeline_fixture(tmp_path: Path):
+    import json
+
+    from ai_risk_radar.config import load_settings
+    from ai_risk_radar.data import save_snapshot
+
+    cfg = {
+        "tickers": ["SOXX", "XLK", "SPY", "SHY"],
+        "acquisition_start": "2020-01-01",
+        "source": "toy",
+        "target_horizon": 20,
+        "target_threshold": -0.05,
+        "weights": {
+            "growth": [0.35, 0.35, 0.20, 0.10],
+            "defensive": [0.10, 0.15, 0.35, 0.40],
+            "fixed_baseline": [0.20, 0.20, 0.20, 0.40],
+        },
+        "candidate_thresholds": [0.20, 0.35, 0.50],
+        "cost_rate": 0.001,
+        "cost_sensitivities": [0.0005, 0.0010, 0.0025],
+        "random_seed": 42,
+        "initial_capital": 10000.0,
+        "data_paths": {
+            "raw_dir": str(tmp_path / "raw"),
+            "processed_dir": str(tmp_path / "processed"),
+            "artifacts_dir": str(tmp_path / "artifacts"),
+        },
+    }
+    cfg_file = tmp_path / "config.json"
+    cfg_file.write_text(json.dumps(cfg), encoding="utf-8")
+    settings = load_settings(cfg_file)
+
+    sessions = pd.date_range("2016-01-04", "2026-11-16", freq="B")
+    n = len(sessions)
+    np.random.seed(42)
+    prices = pd.DataFrame(
+        {
+            "SOXX": 100.0 * np.exp(np.cumsum(np.random.randn(n) * 0.01)),
+            "XLK": 100.0 * np.exp(np.cumsum(np.random.randn(n) * 0.01)),
+            "SPY": 100.0 * np.exp(np.cumsum(np.random.randn(n) * 0.005)),
+            "SHY": 100.0 * np.exp(np.cumsum(np.random.randn(n) * 0.0005)),
+        },
+        index=sessions,
+    )
+    volume = pd.DataFrame(10000, index=sessions, columns=["SOXX", "XLK", "SPY", "SHY"])
+    bundle = DataBundle(
+        adjusted_close=prices,
+        volume=volume,
+        sessions=sessions,
+        manifest={"source": "test_fixture", "cutoff_session": "2026-11-16"},
+    )
+    save_snapshot(bundle, Path(settings.raw_dir) / "snapshot")
+    return settings
+
+
+def test_final_test_identical_reproduction_succeeds_without_modifying_release(tmp_path: Path):
+    """Identical replay of an already-evaluated release succeeds, preserves artifacts, and verifies match."""
+    import json
+
+    from ai_risk_radar.pipeline import run_final_test, run_research
+
+    settings = _setup_pipeline_fixture(tmp_path)
+    release_path = Path(settings.artifacts_dir) / "release.json"
+
+    # Step 1: Research
+    run_research(settings, data_mode="cache")
+    assert release_path.is_file()
+
+    # Step 2: First-time evaluation
+    first_report_path = run_final_test(release_path, settings=settings)
+    assert first_report_path.name == "final_test_report.json"
+    orig_release_text = release_path.read_text(encoding="utf-8")
+    orig_report_text = first_report_path.read_text(encoding="utf-8")
+
+    # Step 3: Identical reproduction
+    repro_report_path = run_final_test(release_path, settings=settings)
+    assert repro_report_path.name == "reproduction_test_report.json"
+    assert repro_report_path.is_file()
+
+    # Step 4: Verify release.json and final_test_report.json are completely untouched
+    assert release_path.read_text(encoding="utf-8") == orig_release_text
+    assert first_report_path.read_text(encoding="utf-8") == orig_report_text
+
+    # Step 5: Verify reproduction report identity
+    repro_data = json.loads(repro_report_path.read_text(encoding="utf-8"))
+    assert repro_data["identity"]["pipeline_mode"] == "final_test_reproduction"
+    assert repro_data["identity"]["reproduction_status"] == "verified_match"
+    assert repro_data["reproduction_status"] == "verified_match"
+
+
+def test_final_test_consumed_release_rejects_altered_boundaries_before_eval(tmp_path: Path):
+    """Replay with altered partition boundary dates must fail with ValueError before evaluation."""
+    import json
+
+    from ai_risk_radar.pipeline import run_final_test, run_research
+
+    settings = _setup_pipeline_fixture(tmp_path)
+    release_path = Path(settings.artifacts_dir) / "release.json"
+
+    run_research(settings, data_mode="cache")
+    run_final_test(release_path, settings=settings)
+
+    # Tamper with recorded boundaries
+    release_data = json.loads(release_path.read_text(encoding="utf-8"))
+    release_data["boundaries"]["cutoff"] = "2026-12-01"
+    release_path.write_text(json.dumps(release_data, indent=2), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Partition boundary mismatch on reproduction"):
+        run_final_test(release_path, settings=settings)
+
+
+def test_final_test_consumed_release_rejects_insufficient_identity(tmp_path: Path):
+    """Consumed release lacking boundaries or selected_threshold must fail visibly."""
+    import json
+
+    from ai_risk_radar.pipeline import run_final_test
+
+    release_file = tmp_path / "release.json"
+
+    # Missing boundaries
+    release_file.write_text(
+        json.dumps({
+            "release_version": "1.0.0",
+            "hashes": {"model": "m", "data": "d"},
+            "test_evaluation": {"evaluated_at": "2026-11-17T00:00:00", "test_metrics": {}},
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="insufficient identity: missing 'boundaries'"):
+        run_final_test(release_file)
+
+    # Missing selected_threshold
+    release_file.write_text(
+        json.dumps({
+            "release_version": "1.0.0",
+            "hashes": {"model": "m", "data": "d"},
+            "boundaries": {"cutoff": "2026-11-16"},
+            "test_evaluation": {"evaluated_at": "2026-11-17T00:00:00", "test_metrics": {}},
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="insufficient identity: missing 'selected_threshold'"):
+        run_final_test(release_file)
+
+

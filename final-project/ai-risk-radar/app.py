@@ -20,6 +20,7 @@ def load_report_data() -> tuple[Report | None, str | None]:
     artifacts_dir = Path("artifacts")
     latest_path = artifacts_dir / "latest_report.json"
     final_test_path = artifacts_dir / "final_test_report.json"
+    repro_test_path = artifacts_dir / "reproduction_test_report.json"
     research_path = artifacts_dir / "research_report.json"
 
     primary_path = None
@@ -27,6 +28,8 @@ def load_report_data() -> tuple[Report | None, str | None]:
         primary_path = latest_path
     elif final_test_path.exists():
         primary_path = final_test_path
+    elif repro_test_path.exists():
+        primary_path = repro_test_path
     elif research_path.exists():
         primary_path = research_path
 
@@ -37,12 +40,13 @@ def load_report_data() -> tuple[Report | None, str | None]:
         with open(primary_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # If primary is latest inference without performance metrics, merge from final_test_report
+        # If primary is latest inference without performance metrics, merge from test report
+        test_source = final_test_path if final_test_path.exists() else (repro_test_path if repro_test_path.exists() else None)
         if (
             data.get("performance", {}).get("selected_strategy") is None
-            and final_test_path.exists()
+            and test_source is not None
         ):
-            with open(final_test_path, "r", encoding="utf-8") as f:
+            with open(test_source, "r", encoding="utf-8") as f:
                 test_data = json.load(f)
                 data["performance"] = test_data.get("performance", data.get("performance"))
                 data["comparisons"] = test_data.get("comparisons", data.get("comparisons"))

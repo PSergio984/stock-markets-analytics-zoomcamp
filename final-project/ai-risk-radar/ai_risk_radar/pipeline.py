@@ -260,13 +260,26 @@ def run_final_test(
         raise FileNotFoundError(f"Release manifest not found: {rel_path}")
 
     release_data = json.loads(rel_path.read_text(encoding="utf-8"))
+    is_reproduction = "test_evaluation" in release_data
 
-    # Guard against reusing an already-consumed holdout
-    if "test_evaluation" in release_data:
-        raise ValueError(
-            "Holdout test partition has already been consumed for this release. "
-            "Config/policy changes cannot silently reuse a consumed holdout as untouched."
-        )
+    # If already evaluated, verify sufficient identity for reproduction equivalence
+    if is_reproduction:
+        expected_boundaries = release_data.get("boundaries")
+        if not expected_boundaries or not isinstance(expected_boundaries, dict):
+            raise ValueError(
+                "Holdout test partition has already been consumed: release manifest has insufficient identity: missing 'boundaries'. "
+                "Cannot establish identical reproduction equivalence."
+            )
+        if "selected_threshold" not in release_data:
+            raise ValueError(
+                "Holdout test partition has already been consumed: release manifest has insufficient identity: missing 'selected_threshold'. "
+                "Cannot establish identical reproduction equivalence."
+            )
+        if "test_metrics" not in release_data.get("test_evaluation", {}):
+            raise ValueError(
+                "Holdout test partition has already been consumed: release manifest has insufficient identity: missing 'test_metrics'. "
+                "Cannot establish identical reproduction equivalence."
+            )
 
     expected_model_hash = release_data.get("hashes", {}).get("model")
     expected_data_hash = release_data.get("hashes", {}).get("data")
@@ -283,7 +296,8 @@ def run_final_test(
     actual_model_hash = _compute_sha256(model_path)
     if actual_model_hash != expected_model_hash:
         raise ValueError(
-            f"Hash mismatch on frozen model: expected {expected_model_hash}, got {actual_model_hash}"
+            f"Hash mismatch on frozen model: expected {expected_model_hash}, got {actual_model_hash}. "
+            "Altered model cannot silently reuse a consumed holdout."
         )
 
     settings, _project_dir = _resolve_pipeline_settings(rel_path, config_path=config_path, settings=settings)
@@ -308,7 +322,8 @@ def run_final_test(
         actual_data_hash = _compute_sha256(data_manifest_path)
         if expected_data_hash and expected_data_hash != "unknown" and actual_data_hash != expected_data_hash:
             raise ValueError(
-                f"Hash mismatch on data snapshot: expected {expected_data_hash}, got {actual_data_hash}"
+                f"Hash mismatch on data snapshot: expected {expected_data_hash}, got {actual_data_hash}. "
+                "Altered data cannot silently reuse a consumed holdout."
             )
 
     compound_release_hash = (
@@ -317,11 +332,32 @@ def run_final_test(
         or _compute_release_hash(actual_model_hash, actual_data_hash, actual_policy_hash)
     )
 
-    rf_bundle = joblib.load(model_path)
-
     feat_set = build_features(bundle, settings)
     from ai_risk_radar.splits import make_splits
     splits = make_splits(feat_set, settings)
+
+    # For reproduction runs, strictly reject altered partition dates or execution conventions before evaluation
+    if is_reproduction:
+        for b_key in ("test_start", "test_end", "cutoff"):
+            exp_val = expected_boundaries.get(b_key)
+            act_val = splits.boundaries.get(b_key)
+            if exp_val and act_val and exp_val != act_val:
+                raise ValueError(
+                    f"Partition boundary mismatch on reproduction: expected {b_key}={exp_val}, got {act_val}. "
+                    "Altered partition dates cannot silently reuse a consumed holdout."
+                )
+        if settings.target_horizon != 20:
+            raise ValueError(
+                f"Execution convention mismatch: expected target_horizon=20, got {settings.target_horizon}. "
+                "Altered conventions cannot silently reuse a consumed holdout."
+            )
+        if abs(settings.target_threshold - (-0.05)) > 1e-6:
+            raise ValueError(
+                f"Execution convention mismatch: expected target_threshold=-0.05, got {settings.target_threshold}. "
+                "Altered conventions cannot silently reuse a consumed holdout."
+            )
+
+    rf_bundle = joblib.load(model_path)
 
     test_frame = feat_set.frame.loc[splits.test]
     test_prices = bundle.adjusted_close.loc[splits.test]
@@ -374,6 +410,41 @@ def run_final_test(
         "momentum_63": mom_res,
         **candidates,
     }
+
+    if is_reproduction:
+        # Verify identical performance against original consumed evaluation
+        original_metrics = release_data["test_evaluation"].get("test_metrics", {})
+        if "total_return" in original_metrics and original_metrics["total_return"] is not None:
+            diff = abs(selected_res.metrics["total_return"] - original_metrics["total_return"])
+            if diff > 1e-4:
+                raise ValueError(
+                    f"Reproduction metric divergence: computed total_return={selected_res.metrics['total_return']}, "
+                    f"original={original_metrics['total_return']} (diff={diff})"
+                )
+
+        metadata = {
+            "pipeline_mode": "final_test_reproduction",
+            "reproduction_status": "verified_match",
+            "evaluation_partition": "test",
+            "probability_status": rf_bundle.metadata.get("probability_status"),
+            "fallback_reason": rf_bundle.metadata.get("reason"),
+            "selected_threshold": selected_threshold,
+            "model_hash": actual_model_hash,
+            "release_hash": compound_release_hash,
+            "cutoff_session": splits.boundaries["cutoff"],
+            "diagnostics": diagnostics,
+            "weights_growth": settings.weights_growth,
+            "weights_defensive": settings.weights_defensive,
+            "weights_fixed_baseline": settings.weights_fixed_baseline,
+            "tickers": settings.tickers,
+            "original_evaluated_at": release_data["test_evaluation"].get("evaluated_at"),
+        }
+
+        report = build_report(all_results, test_risk, metadata)
+        report_path = artifacts_dir / "reproduction_test_report.json"
+        save_report(report, report_path)
+        # Strictly DO NOT modify release.json or final_test_report.json
+        return report_path
 
     metadata = {
         "pipeline_mode": "final_test",

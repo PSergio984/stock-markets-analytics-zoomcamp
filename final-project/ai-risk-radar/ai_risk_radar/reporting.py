@@ -115,15 +115,21 @@ def build_report(
         "Temporal overlap: 20-trading-day forecast horizons overlap, so daily observations are not statistically independent.",
     ]
 
+    identity_dict = {
+        "name": "AI Investment Risk Radar",
+        "version": "0.1.0",
+        "pipeline_mode": metadata.get("pipeline_mode", "research"),
+        "timestamp": pd.Timestamp.now().isoformat(),
+        "model_hash": metadata.get("model_hash") or metadata.get("release_hash"),
+        "release_hash": metadata.get("release_hash"),
+    }
+    if "reproduction_status" in metadata:
+        identity_dict["reproduction_status"] = metadata["reproduction_status"]
+    if "original_evaluated_at" in metadata:
+        identity_dict["original_evaluated_at"] = metadata["original_evaluated_at"]
+
     payload = {
-        "identity": {
-            "name": "AI Investment Risk Radar",
-            "version": "0.1.0",
-            "pipeline_mode": metadata.get("pipeline_mode", "research"),
-            "timestamp": pd.Timestamp.now().isoformat(),
-            "model_hash": metadata.get("model_hash") or metadata.get("release_hash"),
-            "release_hash": metadata.get("release_hash"),
-        },
+        "identity": identity_dict,
         "data_status": {
             "source": metadata.get("source", "yfinance"),
             "cutoff_session": metadata.get("cutoff_session", as_of_session),
@@ -158,6 +164,10 @@ def build_report(
         "diagnostics": metadata.get("diagnostics", {}),
         "limitations": limitations,
     }
+    if "reproduction_status" in metadata:
+        payload["reproduction_status"] = metadata["reproduction_status"]
+    if "original_evaluated_at" in metadata:
+        payload["original_evaluated_at"] = metadata["original_evaluated_at"]
 
     clean_payload = _clean_json_value(payload)
     return Report(payload=clean_payload)

@@ -34,7 +34,10 @@ def main() -> None:
         print(f"Research completed successfully. Report generated at: {out}")
     elif args.command == "final-test":
         out = run_final_test(args.release, config_path=args.config)
-        print(f"Final holdout test evaluated. Report generated at: {out}")
+        if "reproduction" in out.name:
+            print(f"Final holdout test reproduction verified. Report generated at: {out}")
+        else:
+            print(f"Final holdout test evaluated. Report generated at: {out}")
     elif args.command == "latest":
         out = run_latest(args.release, data_mode=args.data_mode, config_path=args.config)
         print(f"Latest risk report published at: {out}")
