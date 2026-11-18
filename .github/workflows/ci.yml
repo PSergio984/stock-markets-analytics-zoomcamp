@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'PSergio984/**'
+    paths:
+      - 'final-project/ai-risk-radar/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'final-project/ai-risk-radar/**'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  test:
+    name: Lint & Offline Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: final-project/ai-risk-radar
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'final-project/ai-risk-radar/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with Ruff
+        run: |
+          ruff check .
+
+      - name: Run offline test suite
+        run: |
+          pytest -v -m "not historical_artifacts"
