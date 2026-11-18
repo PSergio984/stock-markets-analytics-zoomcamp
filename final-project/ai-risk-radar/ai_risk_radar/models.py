@@ -175,7 +175,10 @@ def fit_models(
                 n_jobs=-1,
             )
             clf.fit(df.loc[fold_tr_idx, feature_cols], df.loc[fold_tr_idx, target_col])
-            p_val = clf.predict_proba(df.loc[fold_val_idx, feature_cols])[:, 1]
+            if len(clf.classes_) > 1:
+                p_val = clf.predict_proba(df.loc[fold_val_idx, feature_cols])[:, 1]
+            else:
+                p_val = np.full(len(fold_val_idx), float(clf.classes_[0]))
             fold_briers.append(np.mean((df.loc[fold_val_idx, target_col] - p_val) ** 2))
         avg_brier = float(np.mean(fold_briers))
         if avg_brier < best_rf_brier:

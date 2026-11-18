@@ -298,13 +298,17 @@ def main() -> None:
                     help="Transaction cost difference from session 0 initial portfolio funding.",
                 )
 
-        def _fmt_m_pct(k):
-            val = metrics.get(k)
+        def _fmt_val_pct(val):
             return f"{val:.1%}" if val is not None and not math.isnan(val) else "N/A"
 
-        def _fmt_m_float(k, suffix=""):
-            val = metrics.get(k)
+        def _fmt_val_float(val, suffix=""):
             return f"{val:.2f}{suffix}" if val is not None and not math.isnan(val) else "N/A"
+
+        def _fmt_m_pct(k):
+            return _fmt_val_pct(metrics.get(k))
+
+        def _fmt_m_float(k, suffix=""):
+            return _fmt_val_float(metrics.get(k), suffix)
 
         p_cols = st.columns(5)
         p_cols[0].metric("CAGR", _fmt_m_pct("cagr"))
@@ -327,13 +331,13 @@ def main() -> None:
             if metrics:
                 rows.append({
                     "Strategy": f"Selected Strategy (Threshold {alloc.get('selected_threshold', 0.50):.2f})",
-                    "Total Return": f"{metrics.get('total_return', 0.0):.1%}",
+                    "Total Return": _fmt_val_pct(metrics.get("total_return")),
                     "Return Diff (pp)": "Base",
-                    "CAGR": f"{metrics.get('cagr', 0.0):.1%}",
-                    "Max Drawdown": f"{metrics.get('max_drawdown', 0.0):.1%}",
-                    "Sharpe (rf=0)": f"{metrics.get('sharpe', 0.0):.2f}",
-                    "Turnover": f"{metrics.get('turnover', 0.0):.2f}x",
-                    "Defensive Time": f"{metrics.get('defensive_occupancy', 0.0):.1%}",
+                    "CAGR": _fmt_val_pct(metrics.get("cagr")),
+                    "Max Drawdown": _fmt_val_pct(metrics.get("max_drawdown")),
+                    "Sharpe (rf=0)": _fmt_val_float(metrics.get("sharpe")),
+                    "Turnover": _fmt_val_float(metrics.get("turnover"), "x"),
+                    "Defensive Time": _fmt_val_pct(metrics.get("defensive_occupancy")),
                 })
 
             for name, c_data in comparisons.items():
@@ -341,13 +345,13 @@ def main() -> None:
                 diff_str = format_percentage_points(c_data.get("total_return"), strat_return)
                 rows.append({
                     "Strategy": label,
-                    "Total Return": f"{c_data.get('total_return', 0.0):.1%}",
+                    "Total Return": _fmt_val_pct(c_data.get("total_return")),
                     "Return Diff (pp)": diff_str,
-                    "CAGR": f"{c_data.get('cagr', 0.0):.1%}",
-                    "Max Drawdown": f"{c_data.get('max_drawdown', 0.0):.1%}",
-                    "Sharpe (rf=0)": f"{c_data.get('sharpe', 0.0):.2f}",
-                    "Turnover": f"{c_data.get('turnover', 0.0):.2f}x",
-                    "Defensive Time": f"{c_data.get('defensive_occupancy', 0.0):.1%}",
+                    "CAGR": _fmt_val_pct(c_data.get("cagr")),
+                    "Max Drawdown": _fmt_val_pct(c_data.get("max_drawdown")),
+                    "Sharpe (rf=0)": _fmt_val_float(c_data.get("sharpe")),
+                    "Turnover": _fmt_val_float(c_data.get("turnover"), "x"),
+                    "Defensive Time": _fmt_val_pct(c_data.get("defensive_occupancy")),
                 })
 
             df_comp = pd.DataFrame(rows)
