@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import joblib
@@ -63,8 +64,19 @@ def run_research(settings: Settings, data_mode: str = "cache") -> Path:
     if existing_release_path.is_file():
         try:
             existing_release_data = json.loads(existing_release_path.read_text(encoding="utf-8"))
-            if "test_evaluation" in existing_release_data:
+            if "previous_holdout_consumption" in existing_release_data:
+                previous_consumption = existing_release_data["previous_holdout_consumption"]
+            elif "test_evaluation" in existing_release_data:
                 previous_consumption = existing_release_data["test_evaluation"]
+
+            # Archive previous release manifest and model binary rather than silently overwriting
+            history_dir = artifacts_dir / "history"
+            history_dir.mkdir(parents=True, exist_ok=True)
+            ts_str = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+            shutil.copy2(existing_release_path, history_dir / f"release_{ts_str}.json")
+            existing_model = artifacts_dir / "models" / "random_forest.joblib"
+            if existing_model.is_file():
+                shutil.copy2(existing_model, history_dir / f"random_forest_{ts_str}.joblib")
         except (json.JSONDecodeError, OSError):
             pass
 
@@ -278,6 +290,17 @@ def run_final_test(
         raise FileNotFoundError(f"Release manifest not found: {rel_path}")
 
     release_data = json.loads(rel_path.read_text(encoding="utf-8"))
+
+    # Block subsequent research releases from presenting exposed holdouts as untouched
+    if (
+        release_data.get("holdout_status") == "subsequent_research_holdout_previously_consumed"
+        or "previous_holdout_consumption" in release_data
+    ):
+        raise ValueError(
+            "Holdout test partition has already been consumed by a prior release. "
+            "Subsequent research iterations cannot re-evaluate or present the exposed holdout partition as an untouched final test."
+        )
+
     is_reproduction = "test_evaluation" in release_data
 
     expected_model_hash = release_data.get("hashes", {}).get("model")
@@ -512,16 +535,37 @@ def run_final_test(
                 metric_convention = "legacy_post_funding"
             elif abs(selected_res.metrics["total_return"] - orig_ret) <= 1e-4:
                 metric_convention = "net_initial_capital"
-            elif abs(legacy_post_funding_ret - orig_ret) <= 1e-4:
-                metric_convention = "legacy_post_funding"
             else:
                 diff = abs(selected_res.metrics["total_return"] - orig_ret)
                 raise ValueError(
-                    f"Reproduction metric divergence: computed total_return={selected_res.metrics['total_return']}, "
-                    f"legacy_post_funding_total_return={legacy_post_funding_ret}, original={orig_ret} (diff={diff})"
+                    f"Reproduction metric divergence under net initial capital convention: "
+                    f"computed total_return={selected_res.metrics['total_return']}, "
+                    f"original={orig_ret} (diff={diff}). "
+                    "Legacy post-funding convention is strictly restricted to authenticated historical releases."
                 )
         else:
             metric_convention = "net_initial_capital"
+
+        # Multi-metric trajectory and path verification across all recorded metrics
+        verified_metrics = ["total_return"]
+        for m_key in ("cagr", "max_drawdown", "annualized_volatility", "sharpe", "turnover", "defensive_occupancy", "total_cost"):
+            if m_key in original_metrics and original_metrics[m_key] is not None:
+                orig_val = float(original_metrics[m_key])
+                if m_key == "cagr" and metric_convention == "legacy_post_funding":
+                    n_sess = len(selected_res.daily)
+                    years = (n_sess - 1) / 252.0 if n_sess > 1 else 1.0
+                    comp_val = (1.0 + legacy_post_funding_ret) ** (1.0 / years) - 1.0
+                else:
+                    comp_val = selected_res.metrics.get(m_key)
+                if comp_val is not None:
+                    diff_m = abs(float(comp_val) - orig_val)
+                    if diff_m > 1e-4:
+                        raise ValueError(
+                            f"Reproduction metric divergence on {m_key}: "
+                            f"computed {comp_val}, original={orig_val} (diff={diff_m}). "
+                            "Intermediate trajectory path does not match original evaluation."
+                        )
+                    verified_metrics.append(m_key)
 
         metadata = {
             "pipeline_mode": "final_test_reproduction",
@@ -543,6 +587,8 @@ def run_final_test(
             "net_initial_capital_total_return": net_initial_capital_ret,
             "legacy_post_funding_total_return": legacy_post_funding_ret,
             "funding_cost_impact_bps": funding_impact_bps,
+            "verification_scope": "multi_metric_trajectory_and_funding_basis",
+            "verified_metrics": verified_metrics,
         }
 
         report = build_report(all_results, test_risk, metadata)

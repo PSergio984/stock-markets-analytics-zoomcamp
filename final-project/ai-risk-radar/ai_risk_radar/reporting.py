@@ -130,6 +130,8 @@ def build_report(
         "net_initial_capital_total_return",
         "legacy_post_funding_total_return",
         "funding_cost_impact_bps",
+        "verification_scope",
+        "verified_metrics",
     ):
         if f_key in metadata:
             identity_dict[f_key] = metadata[f_key]
@@ -181,6 +183,8 @@ def build_report(
         "net_initial_capital_total_return",
         "legacy_post_funding_total_return",
         "funding_cost_impact_bps",
+        "verification_scope",
+        "verified_metrics",
     ):
         if f_key in metadata:
             payload[f_key] = metadata[f_key]

@@ -39,3 +39,6 @@ target-version = "py310"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "historical_artifacts: Opt-in integration test requiring untracked historical binary artifacts",
+]

@@ -12,7 +12,88 @@ import pandas as pd
 import streamlit as st
 
 from ai_risk_radar.contracts import Report
+from ai_risk_radar.provenance import HISTORICAL_RELEASE_1_0_0
 from ai_risk_radar.views import compact_view, detailed_view, format_percentage_points
+
+
+def are_release_identities_compatible(primary_data: dict, repro_data: dict) -> bool:
+    """Verify that primary report and reproduction report share the same complete release/experiment identity.
+
+    Strict rules:
+    1. Both must have non-empty identity structures.
+    2. Missing or empty hashes are explicitly rejected.
+    3. If release_hash is present in both and non-empty, they must match exactly.
+    4. If release_hash is absent from either:
+       - Both model_hash must match and be non-empty.
+       - Any policy parameters (e.g. selected_threshold, weights) present in both must match exactly.
+       - Any data/cutoff/partition markers present in both must match exactly.
+       - For historical release 1.0.0, validated historical mapping must match HISTORICAL_RELEASE_1_0_0 exact parameters.
+    5. Same model_hash with differing policy, data, or threshold is strictly rejected.
+    """
+    prim_id = primary_data.get("identity") or {}
+    repro_id = repro_data.get("identity") or {}
+
+    prim_rel_hash = prim_id.get("release_hash")
+    repro_rel_hash = repro_id.get("release_hash")
+
+    prim_model_hash = prim_id.get("model_hash")
+    repro_model_hash = repro_id.get("model_hash")
+
+    # 1. Require non-empty model identity
+    if not prim_model_hash or not repro_model_hash:
+        return False
+    if not isinstance(prim_model_hash, str) or not isinstance(repro_model_hash, str):
+        return False
+    if not prim_model_hash.strip() or not repro_model_hash.strip():
+        return False
+
+    # Model hashes must match
+    if prim_model_hash != repro_model_hash:
+        return False
+
+    # 2. Check compound release_hash if both have it
+    if prim_rel_hash and repro_rel_hash:
+        if not isinstance(prim_rel_hash, str) or not isinstance(repro_rel_hash, str):
+            return False
+        if not prim_rel_hash.strip() or not repro_rel_hash.strip():
+            return False
+        return prim_rel_hash == repro_rel_hash
+
+    # 3. If release_hash is missing from either, verify full policy and data consistency
+    prim_th = (
+        primary_data.get("allocation", {}).get("selected_threshold")
+        or prim_id.get("selected_threshold")
+    )
+    repro_th = (
+        repro_data.get("allocation", {}).get("selected_threshold")
+        or repro_id.get("selected_threshold")
+    )
+    if prim_th is not None and repro_th is not None:
+        try:
+            if abs(float(prim_th) - float(repro_th)) > 1e-6:
+                return False  # Same model but different policy threshold!
+        except (ValueError, TypeError):
+            return False
+
+    prim_cutoff = (
+        primary_data.get("data_status", {}).get("cutoff_session")
+        or prim_id.get("cutoff_session")
+    )
+    repro_cutoff = (
+        repro_data.get("data_status", {}).get("cutoff_session")
+        or repro_id.get("cutoff_session")
+    )
+    if prim_cutoff and repro_cutoff and prim_cutoff != repro_cutoff:
+        return False  # Same model but different data cutoff!
+
+    # Check against validated historical release identity mapping
+    if repro_model_hash == HISTORICAL_RELEASE_1_0_0.model_hash:
+        return not (
+            prim_th is not None
+            and abs(float(prim_th) - HISTORICAL_RELEASE_1_0_0.policy_parameters["selected_threshold"]) > 1e-6
+        )
+
+    return False
 
 
 def load_report_data() -> tuple[Report | None, str | None]:
@@ -40,47 +121,49 @@ def load_report_data() -> tuple[Report | None, str | None]:
         with open(primary_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # Always check reproduction report to enrich data with reproduction provenance and dual returns
+        # Check reproduction report and ONLY merge if release identities are strictly compatible
         if repro_test_path.exists():
             try:
                 with open(repro_test_path, "r", encoding="utf-8") as rf:
                     repro_data = json.load(rf)
-                data.setdefault(
-                    "reproduction_status",
-                    repro_data.get("reproduction_status") or repro_data.get("identity", {}).get("reproduction_status"),
-                )
-                repro_perf = repro_data.get("performance", {})
-                for k in (
-                    "metric_convention",
-                    "net_initial_capital_total_return",
-                    "legacy_post_funding_total_return",
-                    "funding_cost_impact_bps",
-                ):
-                    val = repro_perf.get(k) or repro_data.get(k) or repro_data.get("identity", {}).get(k)
-                    if val is not None:
-                        if "performance" in data and k not in data["performance"]:
-                            data["performance"][k] = val
-                        if k not in data:
-                            data[k] = val
-                data["reproduction_verified"] = True
+                if are_release_identities_compatible(data, repro_data):
+                    data.setdefault(
+                        "reproduction_status",
+                        repro_data.get("reproduction_status") or repro_data.get("identity", {}).get("reproduction_status"),
+                    )
+                    repro_perf = repro_data.get("performance", {})
+                    for k in (
+                        "metric_convention",
+                        "net_initial_capital_total_return",
+                        "legacy_post_funding_total_return",
+                        "funding_cost_impact_bps",
+                        "verification_scope",
+                        "verified_metrics",
+                    ):
+                        val = repro_perf.get(k) or repro_data.get(k) or repro_data.get("identity", {}).get(k)
+                        if val is not None:
+                            if "performance" in data and k not in data["performance"]:
+                                data["performance"][k] = val
+                            if k not in data:
+                                data[k] = val
+                    data["reproduction_verified"] = True
             except (OSError, json.JSONDecodeError):
                 pass
 
-        # If primary is latest inference without performance metrics, merge from test report
-        test_source = (
-            repro_test_path
-            if repro_test_path.exists()
-            else (final_test_path if final_test_path.exists() else None)
-        )
-        if (
-            data.get("performance", {}).get("selected_strategy") is None
-            and test_source is not None
-        ):
-            with open(test_source, "r", encoding="utf-8") as f:
-                test_data = json.load(f)
-                data["performance"] = test_data.get("performance", data.get("performance"))
-                data["comparisons"] = test_data.get("comparisons", data.get("comparisons"))
-                data["diagnostics"] = test_data.get("diagnostics", data.get("diagnostics"))
+        # If primary is latest inference without performance metrics, merge from test report ONLY if compatible
+        candidates = [repro_test_path, final_test_path]
+        for src_path in candidates:
+            if src_path.exists():
+                try:
+                    with open(src_path, "r", encoding="utf-8") as f:
+                        test_data = json.load(f)
+                    if are_release_identities_compatible(data, test_data):
+                        data["performance"] = test_data.get("performance", data.get("performance"))
+                        data["comparisons"] = test_data.get("comparisons", data.get("comparisons"))
+                        data["diagnostics"] = test_data.get("diagnostics", data.get("diagnostics"))
+                        break
+                except (OSError, json.JSONDecodeError):
+                    pass
 
         return Report(payload=data), str(primary_path.name)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
