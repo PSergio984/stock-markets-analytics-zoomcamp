@@ -16,6 +16,8 @@ def build_features(bundle: DataBundle, settings: Settings) -> FeatureSet:
     # 50% SOXX / 50% XLK held through each 20-session horizon
     # r20(t) = 0.5 * (P_SOXX(t+20)/P_SOXX(t) - 1) + 0.5 * (P_XLK(t+20)/P_XLK(t) - 1)
     horizon = settings.target_horizon
+    if horizon <= 0:
+        raise ValueError(f"target_horizon must be a positive integer, got {horizon}")
     soxx = prices["SOXX"]
     xlk = prices["XLK"]
 

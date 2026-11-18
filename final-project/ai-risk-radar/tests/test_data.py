@@ -156,3 +156,8 @@ def test_weight_order_and_sum_validated(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Weights.*must sum to 1.0"):
         load_settings(config_file)
+
+    bad_config["weights"]["growth"] = [-0.10, 0.50, 0.20, 0.40]  # Sums to 1.0 but has negative!
+    config_file.write_text(json.dumps(bad_config))
+    with pytest.raises(ValueError, match="cannot have negative weights"):
+        load_settings(config_file)

@@ -77,7 +77,9 @@ def run_research(settings: Settings, data_mode: str = "cache") -> Path:
             existing_model = artifacts_dir / "models" / "random_forest.joblib"
             if existing_model.is_file():
                 shutil.copy2(existing_model, history_dir / f"random_forest_{ts_str}.joblib")
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError as err:
+            raise ValueError(f"Corrupt existing release manifest at {existing_release_path}: {err}") from err
+        except OSError:
             pass
 
     # 1. Ingestion / Data Loading
@@ -674,6 +676,12 @@ def run_latest(
 
     selected_threshold = release_data.get("selected_threshold")
     actual_policy_hash = _compute_policy_hash(selected_threshold, settings)
+    expected_policy_hash = release_data.get("hashes", {}).get("policy")
+    if expected_policy_hash and actual_policy_hash != expected_policy_hash:
+        raise ValueError(
+            f"Policy / configuration mismatch on release: expected policy hash {expected_policy_hash}, "
+            f"got {actual_policy_hash}."
+        )
     actual_data_hash = "unknown"
     data_manifest_path = snapshot_dir / "manifest.json"
     if data_manifest_path.is_file():

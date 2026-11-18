@@ -70,6 +70,11 @@ def test_label_end_at_boundary_is_purged(sample_settings: Settings):
     val_start = pd.Timestamp(splits.boundaries["validation_start"])
     test_start = pd.Timestamp(splits.boundaries["test_start"])
 
+    # Partitions must be non-empty
+    assert len(splits.train) > 0, "Train partition must not be empty"
+    assert len(splits.calibration) > 0, "Calibration partition must not be empty"
+    assert len(splits.validation) > 0, "Validation partition must not be empty"
+
     # For any session in training, its label_end must be strictly before cal_start
     train_label_ends = df.loc[splits.train, "label_end"]
     assert (train_label_ends < cal_start).all(), "Training contains sessions whose outcomes cross into calibration"

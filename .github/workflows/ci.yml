@@ -15,6 +15,9 @@ on:
       - 'final-project/ai-risk-radar/**'
       - '.github/workflows/ci.yml'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Lint & Offline Tests

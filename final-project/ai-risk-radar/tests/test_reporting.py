@@ -29,7 +29,7 @@ def test_unavailable_probability_uses_fixed_baseline():
         "pipeline_mode": "latest",
         "probability_status": "unavailable",
         "fallback_reason": "Inadequate positive events in calibration split",
-        "selected_threshold": None,
+        "selected_threshold": 0.35,
         "weights_fixed_baseline": [0.20, 0.20, 0.20, 0.40],
         "weights_growth": [0.35, 0.35, 0.20, 0.10],
         "weights_defensive": [0.10, 0.15, 0.35, 0.40],
@@ -53,7 +53,7 @@ def test_serialized_report_has_no_nonfinite_json(tmp_path: Path):
     b_result = BacktestResult(
         daily=pd.DataFrame({"equity": [10000.0]}, index=[pd.Timestamp("2024-01-02")]),
         trades=pd.DataFrame(),
-        metrics={"cagr": None, "max_drawdown": 0.0, "sharpe": None},  # Nulls
+        metrics={"cagr": float("nan"), "max_drawdown": float("inf"), "sharpe": float("-inf")},
     )
     forecast_series = pd.Series([np.nan], index=[pd.Timestamp("2024-01-02")])
     metadata = {

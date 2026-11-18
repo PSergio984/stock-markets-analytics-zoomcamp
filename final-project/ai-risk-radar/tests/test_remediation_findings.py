@@ -32,7 +32,12 @@ from ai_risk_radar.views import compact_view, detailed_view
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HISTORICAL_MODEL_FILE = REPO_ROOT / "artifacts" / "models" / "random_forest.joblib"
 HISTORICAL_SNAPSHOT_DIR = REPO_ROOT / "data" / "raw" / "snapshot"
-HISTORICAL_BINARIES_AVAILABLE = HISTORICAL_MODEL_FILE.is_file() and HISTORICAL_SNAPSHOT_DIR.is_dir()
+HISTORICAL_BINARIES_AVAILABLE = (
+    HISTORICAL_MODEL_FILE.is_file()
+    and HISTORICAL_SNAPSHOT_DIR.is_dir()
+    and (REPO_ROOT / "artifacts" / "release.json").is_file()
+    and (REPO_ROOT / "artifacts" / "final_test_report.json").is_file()
+)
 
 skip_without_historical_binaries = pytest.mark.skipif(
     not HISTORICAL_BINARIES_AVAILABLE,
