@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Environments
+.venv/
+.venv*/
+venv/
+ENV/
+env/
+
+# Data and Artifacts (must not be committed)
+data/raw/
+data/processed/
+artifacts/
+*.parquet
+*.pkl
+*.joblib
+
+# Jupyter Notebook checkpoints & outputs
+.ipynb_checkpoints/
+artifacts/notebooks/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Streamlit
+.streamlit/
+
+# Packaging & Builds
+*.egg-info/
+build/
+dist/

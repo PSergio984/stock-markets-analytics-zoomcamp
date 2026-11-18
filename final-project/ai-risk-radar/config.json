@@ -1,0 +1,22 @@
+{
+  "tickers": ["SOXX", "XLK", "SPY", "SHY"],
+  "acquisition_start": "2016-01-01",
+  "source": "yfinance",
+  "target_horizon": 20,
+  "target_threshold": -0.05,
+  "weights": {
+    "growth": [0.35, 0.35, 0.20, 0.10],
+    "defensive": [0.10, 0.15, 0.35, 0.40],
+    "fixed_baseline": [0.20, 0.20, 0.20, 0.40]
+  },
+  "candidate_thresholds": [0.20, 0.35, 0.50],
+  "cost_rate": 0.001,
+  "cost_sensitivities": [0.0005, 0.0010, 0.0025],
+  "random_seed": 42,
+  "initial_capital": 10000.0,
+  "data_paths": {
+    "raw_dir": "data/raw",
+    "processed_dir": "data/processed",
+    "artifacts_dir": "artifacts"
+  }
+}
