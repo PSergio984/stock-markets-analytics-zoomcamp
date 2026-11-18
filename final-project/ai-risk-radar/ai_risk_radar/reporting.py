@@ -74,7 +74,7 @@ def build_report(
     weights_defensive = list(metadata.get("weights_defensive", [0.10, 0.15, 0.35, 0.40]))
     weights_fixed = list(metadata.get("weights_fixed_baseline", [0.20, 0.20, 0.20, 0.40]))
 
-    if prob_status == "unavailable" or selected_threshold is None:
+    if prob_status == "unavailable" or selected_threshold is None or raw_prob is None or np.isnan(raw_prob):
         strategy_mode = "Fixed Baseline (Fallback)"
         alloc_weights = dict(zip(tickers, weights_fixed))
         trade_desc = "Probability unavailable; maintaining fixed defensive baseline allocation."

@@ -6,6 +6,7 @@ Supports two view modes:
 """
 
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -297,12 +298,20 @@ def main() -> None:
                     help="Transaction cost difference from session 0 initial portfolio funding.",
                 )
 
+        def _fmt_m_pct(k):
+            val = metrics.get(k)
+            return f"{val:.1%}" if val is not None and not math.isnan(val) else "N/A"
+
+        def _fmt_m_float(k, suffix=""):
+            val = metrics.get(k)
+            return f"{val:.2f}{suffix}" if val is not None and not math.isnan(val) else "N/A"
+
         p_cols = st.columns(5)
-        p_cols[0].metric("CAGR", f"{metrics.get('cagr', 0.0):.1%}")
-        p_cols[1].metric("Max Drawdown", f"{metrics.get('max_drawdown', 0.0):.1%}")
-        p_cols[2].metric("Sharpe (rf=0)", f"{metrics.get('sharpe', 0.0):.2f}")
-        p_cols[3].metric("Turnover", f"{metrics.get('turnover', 0.0):.2f}x")
-        p_cols[4].metric("Defensive Occupancy", f"{metrics.get('defensive_occupancy', 0.0):.1%}")
+        p_cols[0].metric("CAGR", _fmt_m_pct("cagr"))
+        p_cols[1].metric("Max Drawdown", _fmt_m_pct("max_drawdown"))
+        p_cols[2].metric("Sharpe (rf=0)", _fmt_m_float("sharpe"))
+        p_cols[3].metric("Turnover", _fmt_m_float("turnover", "x"))
+        p_cols[4].metric("Defensive Occupancy", _fmt_m_pct("defensive_occupancy"))
 
     # Additional sections for Detailed View
     if mode == "Detailed":

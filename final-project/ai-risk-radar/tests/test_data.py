@@ -159,5 +159,22 @@ def test_weight_order_and_sum_validated(tmp_path: Path):
 
     bad_config["weights"]["growth"] = [-0.10, 0.50, 0.20, 0.40]  # Sums to 1.0 but has negative!
     config_file.write_text(json.dumps(bad_config))
-    with pytest.raises(ValueError, match="cannot have negative weights"):
+    with pytest.raises(ValueError, match="negative weights"):
+        load_settings(config_file)
+
+    bad_config["weights"]["growth"] = [float("nan"), 0.50, 0.20, 0.30]
+    config_file.write_text(json.dumps(bad_config))
+    with pytest.raises(ValueError, match="NaN or negative weights"):
+        load_settings(config_file)
+
+    bad_config["weights"]["growth"] = [0.35, 0.35, 0.20, 0.10]
+    bad_config["initial_capital"] = 0.0
+    config_file.write_text(json.dumps(bad_config))
+    with pytest.raises(ValueError, match="initial_capital must be positive"):
+        load_settings(config_file)
+
+    bad_config["initial_capital"] = 10000.0
+    bad_config["cost_rate"] = -0.001
+    config_file.write_text(json.dumps(bad_config))
+    with pytest.raises(ValueError, match="cost_rate cannot be negative"):
         load_settings(config_file)

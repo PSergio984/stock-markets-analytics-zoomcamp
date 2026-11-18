@@ -1,6 +1,7 @@
 """Configuration loading and validation for AI Investment Risk Radar."""
 
 import json
+import math
 from pathlib import Path
 
 from ai_risk_radar.contracts import Settings
@@ -32,13 +33,20 @@ def load_settings(path: Path | str) -> Settings:
     ]:
         if len(w_vec) != 4:
             raise ValueError(f"Weight vector '{name}' must have 4 elements, got {len(w_vec)}")
-        if any(w < 0.0 for w in w_vec):
-            raise ValueError(f"Weight vector '{name}' cannot have negative weights")
-        if abs(sum(w_vec) - 1.0) > 1e-5:
+        if any(math.isnan(w) or w < 0.0 for w in w_vec):
+            raise ValueError(f"Weight vector '{name}' contains NaN or negative weights")
+        if math.isnan(sum(w_vec)) or abs(sum(w_vec) - 1.0) > 1e-5:
             raise ValueError(f"Weights for '{name}' must sum to 1.0, got {sum(w_vec)}")
 
     candidate_thresholds = tuple(float(t) for t in data["candidate_thresholds"])
     cost_sensitivities = tuple(float(c) for c in data.get("cost_sensitivities", [0.0005, 0.0010, 0.0025]))
+
+    initial_capital = float(data.get("initial_capital", 10000.0))
+    if initial_capital <= 0:
+        raise ValueError(f"initial_capital must be positive, got {initial_capital}")
+    cost_rate = float(data["cost_rate"])
+    if cost_rate < 0:
+        raise ValueError(f"cost_rate cannot be negative, got {cost_rate}")
 
     data_paths = data.get("data_paths", {})
     raw_dir = Path(data_paths.get("raw_dir", "data/raw"))
@@ -55,10 +63,10 @@ def load_settings(path: Path | str) -> Settings:
         weights_defensive=defensive,
         weights_fixed_baseline=fixed_baseline,
         candidate_thresholds=candidate_thresholds,
-        cost_rate=float(data["cost_rate"]),
+        cost_rate=cost_rate,
         cost_sensitivities=cost_sensitivities,
         random_seed=int(data["random_seed"]),
-        initial_capital=float(data.get("initial_capital", 10000.0)),
+        initial_capital=initial_capital,
         raw_dir=raw_dir,
         processed_dir=processed_dir,
         artifacts_dir=artifacts_dir,

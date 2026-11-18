@@ -113,10 +113,11 @@ def fit_models(
     q2 = n_train // 2
     q3 = (3 * n_train) // 4
 
+    gap = settings.target_horizon
     folds = [
-        (0, max(1, q1 - 20), q1, q2),
-        (0, max(1, q2 - 20), q2, q3),
-        (0, max(1, q3 - 20), q3, n_train),
+        (0, max(1, q1 - gap), q1, q2),
+        (0, max(1, q2 - gap), q2, q3),
+        (0, max(1, q3 - gap), q3, n_train),
     ]
 
     for depth in dt_candidates:
@@ -126,7 +127,10 @@ def fit_models(
             fold_val_idx = splits.train[val_s:val_e]
             clf = DecisionTreeClassifier(max_depth=depth, random_state=settings.random_seed)
             clf.fit(df.loc[fold_tr_idx, feature_cols], df.loc[fold_tr_idx, target_col])
-            p_val = clf.predict_proba(df.loc[fold_val_idx, feature_cols])[:, 1]
+            if len(clf.classes_) > 1:
+                p_val = clf.predict_proba(df.loc[fold_val_idx, feature_cols])[:, 1]
+            else:
+                p_val = np.full(len(fold_val_idx), float(clf.classes_[0]))
             fold_briers.append(np.mean((df.loc[fold_val_idx, target_col] - p_val) ** 2))
         avg_brier = float(np.mean(fold_briers))
         if avg_brier < best_dt_brier:

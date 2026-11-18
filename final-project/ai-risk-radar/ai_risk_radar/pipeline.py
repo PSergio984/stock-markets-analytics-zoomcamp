@@ -492,7 +492,17 @@ def run_final_test(
     )
 
     if selected_threshold is not None:
-        selected_res = candidates.get(f"threshold_{selected_threshold:.2f}", base_res)
+        strat_key = f"threshold_{selected_threshold:.2f}"
+        if strat_key in candidates:
+            selected_res = candidates[strat_key]
+        else:
+            selected_res = simulate(
+                test_prices,
+                test_risk,
+                selected_threshold,
+                settings,
+                cost_rate=settings.cost_rate,
+            )
     else:
         selected_res = base_res
 
