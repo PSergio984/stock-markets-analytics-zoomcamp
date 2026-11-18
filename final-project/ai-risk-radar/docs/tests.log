@@ -1,66 +1,72 @@
-﻿============================= test session starts =============================
-platform win32 -- Python 3.12.13, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\admin\orca\workspaces\stock-markets-analytics-zoomcamp\ai-risk-radar-build\final-project\ai-risk-radar\.venv\Scripts\python.exe
-cachedir: .pytest_cache
-rootdir: C:\Users\admin\orca\workspaces\stock-markets-analytics-zoomcamp\ai-risk-radar-build\final-project\ai-risk-radar
-configfile: pyproject.toml
-testpaths: tests
-plugins: anyio-4.16.0, platformdirs-4.14.5
-collecting ... collected 45 items
-
-tests/test_app.py::test_app_renders_default_compact_mode PASSED          [  2%]
-tests/test_app.py::test_app_switch_to_detailed_mode PASSED               [  4%]
-tests/test_data.py::test_missing_exchange_session_rejected PASSED        [  6%]
-tests/test_data.py::test_duplicate_or_unsorted_sessions_rejected PASSED  [  8%]
-tests/test_data.py::test_adjustments_do_not_double_count_dividends PASSED [ 11%]
-tests/test_data.py::test_snapshot_hash_mismatch_rejected PASSED          [ 13%]
-tests/test_data.py::test_weight_order_and_sum_validated PASSED           [ 15%]
-tests/test_features.py::test_target_is_equal_weight_buy_and_hold PASSED  [ 17%]
-tests/test_features.py::test_unknown_tail_labels_preserve_inference_rows PASSED [ 20%]
-tests/test_features.py::test_future_price_change_cannot_change_past_features PASSED [ 22%]
-tests/test_metrics.py::test_cagr_and_drawdown_calculation PASSED         [ 24%]
-tests/test_metrics.py::test_sharpe_ratio_assumes_zero_risk_free PASSED   [ 26%]
-tests/test_models.py::test_fit_never_sees_validation_or_test PASSED      [ 28%]
-tests/test_models.py::test_calibrator_uses_only_calibration_sessions PASSED [ 31%]
-tests/test_models.py::test_constant_predictor_uses_training_prevalence PASSED [ 33%]
-tests/test_models.py::test_one_class_calibration_disables_probability PASSED [ 35%]
-tests/test_models.py::test_serialized_model_predictions_match PASSED     [ 37%]
-tests/test_pipeline.py::test_research_does_not_evaluate_test_outcomes PASSED [ 40%]
-tests/test_pipeline.py::test_release_hash_change_blocks_test_reuse PASSED [ 42%]
-tests/test_pipeline.py::test_latest_does_not_fit_models PASSED           [ 44%]
-tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report PASSED [ 46%]
-tests/test_reporting.py::test_missing_report_is_explicit PASSED          [ 48%]
-tests/test_reporting.py::test_unavailable_probability_uses_fixed_baseline PASSED [ 51%]
-tests/test_reporting.py::test_serialized_report_has_no_nonfinite_json PASSED [ 53%]
-tests/test_review_fixes.py::test_agy_1_benchmark_targets_default_sessions_none PASSED [ 55%]
-tests/test_review_fixes.py::test_agy_3_metrics_accounts_for_initial_funding_cost PASSED [ 57%]
-tests/test_review_fixes.py::test_agy_5_clean_json_value_preserves_boolean_types PASSED [ 60%]
-tests/test_review_fixes.py::test_agy_11_consumed_holdout_blocks_silent_reuse PASSED [ 62%]
-tests/test_review_fixes.py::test_agy_11_policy_tampering_blocks_final_test PASSED [ 64%]
-tests/test_review_fixes.py::test_agy_11_identity_distinct_model_and_release_hashes PASSED [ 66%]
-tests/test_review_fixes.py::test_final_test_identical_reproduction_succeeds_without_modifying_release PASSED [ 68%]
-tests/test_review_fixes.py::test_final_test_consumed_release_rejects_altered_boundaries_before_eval PASSED [ 71%]
-tests/test_review_fixes.py::test_final_test_consumed_release_rejects_insufficient_identity PASSED [ 73%]
-tests/test_simulation.py::test_initial_funding_cost_is_charged PASSED    [ 75%]
-tests/test_simulation.py::test_costs_charge_each_buy_and_sell PASSED     [ 77%]
-tests/test_simulation.py::test_buy_and_hold_weights_drift PASSED         [ 80%]
-tests/test_simulation.py::test_holiday_week_executes_next_session_close PASSED [ 82%]
-tests/test_simulation.py::test_no_qualifying_candidate_returns_none PASSED [ 84%]
-tests/test_splits.py::test_label_end_at_boundary_is_purged PASSED        [ 86%]
-tests/test_splits.py::test_disjoint_partitions_and_durations PASSED      [ 88%]
-tests/test_views.py::test_modes_share_forecast_and_metrics PASSED        [ 91%]
-tests/test_views.py::test_missing_or_stale_report_is_visible PASSED      [ 93%]
-tests/test_views.py::test_forecast_label_states_20_sessions_and_5_percent PASSED [ 95%]
-tests/test_views.py::test_missing_calibration_never_shows_probability PASSED [ 97%]
-tests/test_views.py::test_percentage_points_are_not_relative_percentages PASSED [100%]
-
-============================== warnings summary ===============================
-tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report
-tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report
-tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report
-tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report
-  C:\Users\admin\orca\workspaces\stock-markets-analytics-zoomcamp\ai-risk-radar-build\final-project\ai-risk-radar\.venv\Lib\site-packages\pandas\core\series.py:848: Pandas4Warning: Series.values returning an ndarray that drops timezone information for DatetimeTZDtype is deprecated. In a future version, this will return the underlying DatetimeArray instead. Use 'Series.dt.tz_convert(None).to_numpy()' to get a NumPy array of UTC values, or 'Series.array' to get the ExtensionArray.
-  See https://pandas.pydata.org/docs/dev/whatsnew/v3.1.0.html#whatsnew-310-deprecations-values for more details.
-    warnings.warn(
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-================== 45 passed, 4 warnings in 88.15s (0:01:28) ==================
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\admin\orca\workspaces\stock-markets-analytics-zoomcamp\ai-risk-radar-build\final-project\ai-risk-radar\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\admin\orca\workspaces\stock-markets-analytics-zoomcamp\ai-risk-radar-build\final-project\ai-risk-radar
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0, platformdirs-4.14.5
+collecting ... collected 51 items
+
+tests/test_app.py::test_app_renders_default_compact_mode PASSED          [  1%]
+tests/test_app.py::test_app_switch_to_detailed_mode PASSED               [  3%]
+tests/test_data.py::test_missing_exchange_session_rejected PASSED        [  5%]
+tests/test_data.py::test_duplicate_or_unsorted_sessions_rejected PASSED  [  7%]
+tests/test_data.py::test_adjustments_do_not_double_count_dividends PASSED [  9%]
+tests/test_data.py::test_snapshot_hash_mismatch_rejected PASSED          [ 11%]
+tests/test_data.py::test_weight_order_and_sum_validated PASSED           [ 13%]
+tests/test_features.py::test_target_is_equal_weight_buy_and_hold PASSED  [ 15%]
+tests/test_features.py::test_unknown_tail_labels_preserve_inference_rows PASSED [ 17%]
+tests/test_features.py::test_future_price_change_cannot_change_past_features PASSED [ 19%]
+tests/test_metrics.py::test_cagr_and_drawdown_calculation PASSED         [ 21%]
+tests/test_metrics.py::test_sharpe_ratio_assumes_zero_risk_free PASSED   [ 23%]
+tests/test_models.py::test_fit_never_sees_validation_or_test PASSED      [ 25%]
+tests/test_models.py::test_calibrator_uses_only_calibration_sessions PASSED [ 27%]
+tests/test_models.py::test_constant_predictor_uses_training_prevalence PASSED [ 29%]
+tests/test_models.py::test_one_class_calibration_disables_probability PASSED [ 31%]
+tests/test_models.py::test_serialized_model_predictions_match PASSED     [ 33%]
+tests/test_pipeline.py::test_research_does_not_evaluate_test_outcomes PASSED [ 35%]
+tests/test_pipeline.py::test_release_hash_change_blocks_test_reuse PASSED [ 37%]
+tests/test_pipeline.py::test_latest_does_not_fit_models PASSED           [ 39%]
+tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report PASSED [ 41%]
+tests/test_remediation_findings.py::test_finding_1_and_2_actual_historical_release_reproduction PASSED [ 43%]
+tests/test_remediation_findings.py::test_finding_3_pre_simulation_sentinel_policy_tampering PASSED [ 45%]
+tests/test_remediation_findings.py::test_finding_4_pre_simulation_sentinel_boundary_tampering PASSED [ 47%]
+tests/test_remediation_findings.py::test_finding_4_pre_simulation_convention_tampering PASSED [ 49%]
+tests/test_remediation_findings.py::test_finding_5_holdout_consumption_preservation_across_research PASSED [ 50%]
+tests/test_remediation_findings.py::test_finding_6_dashboard_loads_reproduction_and_views_format_dual_returns PASSED [ 52%]
+tests/test_reporting.py::test_missing_report_is_explicit PASSED          [ 54%]
+tests/test_reporting.py::test_unavailable_probability_uses_fixed_baseline PASSED [ 56%]
+tests/test_reporting.py::test_serialized_report_has_no_nonfinite_json PASSED [ 58%]
+tests/test_review_fixes.py::test_agy_1_benchmark_targets_default_sessions_none PASSED [ 60%]
+tests/test_review_fixes.py::test_agy_3_metrics_accounts_for_initial_funding_cost PASSED [ 62%]
+tests/test_review_fixes.py::test_agy_5_clean_json_value_preserves_boolean_types PASSED [ 64%]
+tests/test_review_fixes.py::test_agy_11_consumed_holdout_blocks_silent_reuse PASSED [ 66%]
+tests/test_review_fixes.py::test_agy_11_policy_tampering_blocks_final_test PASSED [ 68%]
+tests/test_review_fixes.py::test_agy_11_identity_distinct_model_and_release_hashes PASSED [ 70%]
+tests/test_review_fixes.py::test_final_test_identical_reproduction_succeeds_without_modifying_release PASSED [ 72%]
+tests/test_review_fixes.py::test_final_test_consumed_release_rejects_altered_boundaries_before_eval PASSED [ 74%]
+tests/test_review_fixes.py::test_final_test_consumed_release_rejects_insufficient_identity PASSED [ 76%]
+tests/test_simulation.py::test_initial_funding_cost_is_charged PASSED    [ 78%]
+tests/test_simulation.py::test_costs_charge_each_buy_and_sell PASSED     [ 80%]
+tests/test_simulation.py::test_buy_and_hold_weights_drift PASSED         [ 82%]
+tests/test_simulation.py::test_holiday_week_executes_next_session_close PASSED [ 84%]
+tests/test_simulation.py::test_no_qualifying_candidate_returns_none PASSED [ 86%]
+tests/test_splits.py::test_label_end_at_boundary_is_purged PASSED        [ 88%]
+tests/test_splits.py::test_disjoint_partitions_and_durations PASSED      [ 90%]
+tests/test_views.py::test_modes_share_forecast_and_metrics PASSED        [ 92%]
+tests/test_views.py::test_missing_or_stale_report_is_visible PASSED      [ 94%]
+tests/test_views.py::test_forecast_label_states_20_sessions_and_5_percent PASSED [ 96%]
+tests/test_views.py::test_missing_calibration_never_shows_probability PASSED [ 98%]
+tests/test_views.py::test_percentage_points_are_not_relative_percentages PASSED [100%]
+
+============================== warnings summary ===============================
+tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report
+tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report
+tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report
+tests/test_pipeline.py::test_incomplete_refresh_preserves_previous_report
+  C:\Users\admin\orca\workspaces\stock-markets-analytics-zoomcamp\ai-risk-radar-build\final-project\ai-risk-radar\.venv\Lib\site-packages\pandas\core\series.py:848: Pandas4Warning: Series.values returning an ndarray that drops timezone information for DatetimeTZDtype is deprecated. In a future version, this will return the underlying DatetimeArray instead. Use 'Series.dt.tz_convert(None).to_numpy()' to get a NumPy array of UTC values, or 'Series.array' to get the ExtensionArray.
+  See https://pandas.pydata.org/docs/dev/whatsnew/v3.1.0.html#whatsnew-310-deprecations-values for more details.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================== 51 passed, 4 warnings in 92.64s (0:01:32) ==================

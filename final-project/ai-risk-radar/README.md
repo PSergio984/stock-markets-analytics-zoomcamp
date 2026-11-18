@@ -87,8 +87,11 @@ python -m ai_risk_radar research --config config.json --data-mode cache
 # Use --data-mode refresh to fetch live prices from yfinance
 ```
 
-### 2. Single-Use Final Holdout Test (`final-test`)
-Evaluates the frozen release model on the untouched 24-month holdout test partition (2024-11-18 to 2026-11-16, 500 trading sessions). Verifies cryptographic SHA-256 release hashes before execution and writes `artifacts/final_test_report.json`.
+### 2. Single-Use Final Holdout Test & Verified Reproduction (`final-test`)
+Evaluates the frozen release model on the untouched 24-month holdout test partition (2024-11-18 to 2026-11-16, 500 trading sessions). Cryptographic SHA-256 release hashes and policy parameters are strictly verified before execution.
+
+- **First-Time Evaluation:** Evaluates an untouched release manifest, records holdout consumption in `release.json`, and writes `artifacts/final_test_report.json`.
+- **Reproduction Mode:** When executed on an already-evaluated release (e.g. `artifacts/release.json`), the pipeline verifies bit-exact trajectory reproduction against the historical holdout evaluation, generates `artifacts/reproduction_test_report.json`, and leaves `release.json` and `final_test_report.json` strictly immutable.
 
 ```bash
 python -m ai_risk_radar final-test --release artifacts/release.json

@@ -12,6 +12,7 @@ from ai_risk_radar.contracts import Settings
 from ai_risk_radar.data import fetch_prices, load_snapshot, save_snapshot
 from ai_risk_radar.features import build_features
 from ai_risk_radar.models import classification_report, fit_models, predict_risk
+from ai_risk_radar.provenance import lookup_historical_provenance
 from ai_risk_radar.reporting import build_report, save_report
 from ai_risk_radar.simulation import (
     benchmark_targets,
@@ -55,6 +56,17 @@ def run_research(settings: Settings, data_mode: str = "cache") -> Path:
     artifacts_dir = Path(settings.artifacts_dir)
     snapshot_dir = raw_dir / "snapshot"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Guard against silent holdout reset if existing release already consumed test partition
+    existing_release_path = artifacts_dir / "release.json"
+    previous_consumption = None
+    if existing_release_path.is_file():
+        try:
+            existing_release_data = json.loads(existing_release_path.read_text(encoding="utf-8"))
+            if "test_evaluation" in existing_release_data:
+                previous_consumption = existing_release_data["test_evaluation"]
+        except (json.JSONDecodeError, OSError):
+            pass
 
     # 1. Ingestion / Data Loading
     if data_mode == "refresh":
@@ -158,6 +170,12 @@ def run_research(settings: Settings, data_mode: str = "cache") -> Path:
         "boundaries": splits.boundaries,
         "validation_metrics": selected_res.metrics,
     }
+    if previous_consumption is not None:
+        release_payload["previous_holdout_consumption"] = previous_consumption
+        release_payload["holdout_status"] = "subsequent_research_holdout_previously_consumed"
+    else:
+        release_payload["holdout_status"] = "untouched"
+
     release_path = artifacts_dir / "release.json"
     release_path.write_text(json.dumps(release_payload, indent=2), encoding="utf-8")
 
@@ -262,14 +280,22 @@ def run_final_test(
     release_data = json.loads(rel_path.read_text(encoding="utf-8"))
     is_reproduction = "test_evaluation" in release_data
 
+    expected_model_hash = release_data.get("hashes", {}).get("model")
+    expected_data_hash = release_data.get("hashes", {}).get("data")
+    expected_policy_hash = release_data.get("hashes", {}).get("policy") or release_data.get("policy_hash")
+
     # If already evaluated, verify sufficient identity for reproduction equivalence
     if is_reproduction:
         expected_boundaries = release_data.get("boundaries")
         if not expected_boundaries or not isinstance(expected_boundaries, dict):
-            raise ValueError(
-                "Holdout test partition has already been consumed: release manifest has insufficient identity: missing 'boundaries'. "
-                "Cannot establish identical reproduction equivalence."
-            )
+            legacy_provenance = lookup_historical_provenance(expected_model_hash or "", expected_data_hash or "")
+            if legacy_provenance and legacy_provenance.expected_boundaries:
+                expected_boundaries = legacy_provenance.expected_boundaries
+            else:
+                raise ValueError(
+                    "Holdout test partition has already been consumed: release manifest has insufficient identity: missing 'boundaries'. "
+                    "Cannot establish identical reproduction equivalence."
+                )
         if "selected_threshold" not in release_data:
             raise ValueError(
                 "Holdout test partition has already been consumed: release manifest has insufficient identity: missing 'selected_threshold'. "
@@ -281,9 +307,18 @@ def run_final_test(
                 "Cannot establish identical reproduction equivalence."
             )
 
-    expected_model_hash = release_data.get("hashes", {}).get("model")
-    expected_data_hash = release_data.get("hashes", {}).get("data")
-    expected_policy_hash = release_data.get("hashes", {}).get("policy") or release_data.get("policy_hash")
+    # Historical provenance resolution for legacy releases lacking embedded policy hashes
+    legacy_provenance = None
+    if not expected_policy_hash and is_reproduction:
+        legacy_provenance = lookup_historical_provenance(expected_model_hash or "", expected_data_hash or "")
+        if legacy_provenance:
+            expected_policy_hash = legacy_provenance.policy_hash
+        else:
+            raise ValueError(
+                "Holdout test partition has already been consumed: release manifest has insufficient identity: "
+                "legacy release lacks embedded policy_hash and has no recognized source-backed provenance entry."
+            )
+
     if not expected_model_hash:
         raise ValueError("Invalid release manifest: missing model hash")
 
@@ -302,14 +337,49 @@ def run_final_test(
 
     settings, _project_dir = _resolve_pipeline_settings(rel_path, config_path=config_path, settings=settings)
 
-    # Validate policy hash if present in release manifest
+    # Validate policy hash or source-backed historical provenance BEFORE snapshot loading / simulation
     selected_threshold = release_data.get("selected_threshold")
     actual_policy_hash = _compute_policy_hash(selected_threshold, settings)
+
     if expected_policy_hash and actual_policy_hash != expected_policy_hash:
         raise ValueError(
             f"Policy / configuration mismatch on release: expected policy hash {expected_policy_hash}, "
             f"got {actual_policy_hash}. Config/policy changes cannot silently reuse a consumed holdout as untouched."
         )
+
+    # For legacy releases with source-backed provenance, verify explicit parameters before simulation
+    if legacy_provenance is not None:
+        p_params = legacy_provenance.policy_parameters
+        if abs(settings.cost_rate - p_params["cost_rate"]) > 1e-7:
+            raise ValueError(
+                f"Policy parameter mismatch on reproduction: expected cost_rate={p_params['cost_rate']}, "
+                f"got {settings.cost_rate}."
+            )
+        if tuple(settings.weights_growth) != tuple(p_params["weights_growth"]):
+            raise ValueError(
+                f"Policy parameter mismatch on reproduction: expected weights_growth={p_params['weights_growth']}, "
+                f"got {settings.weights_growth}."
+            )
+        if tuple(settings.weights_defensive) != tuple(p_params["weights_defensive"]):
+            raise ValueError(
+                f"Policy parameter mismatch on reproduction: expected weights_defensive={p_params['weights_defensive']}, "
+                f"got {settings.weights_defensive}."
+            )
+        if tuple(settings.weights_fixed_baseline) != tuple(p_params["weights_fixed_baseline"]):
+            raise ValueError(
+                f"Policy parameter mismatch on reproduction: expected weights_fixed_baseline={p_params['weights_fixed_baseline']}, "
+                f"got {settings.weights_fixed_baseline}."
+            )
+        if tuple(settings.candidate_thresholds) != tuple(p_params["candidate_thresholds"]):
+            raise ValueError(
+                f"Policy parameter mismatch on reproduction: expected candidate_thresholds={p_params['candidate_thresholds']}, "
+                f"got {settings.candidate_thresholds}."
+            )
+        if settings.random_seed != p_params["random_seed"]:
+            raise ValueError(
+                f"Policy parameter mismatch on reproduction: expected random_seed={p_params['random_seed']}, "
+                f"got {settings.random_seed}."
+            )
 
     # Load cached snapshot
     snapshot_dir = Path(settings.raw_dir) / "snapshot"
@@ -338,8 +408,7 @@ def run_final_test(
 
     # For reproduction runs, strictly reject altered partition dates or execution conventions before evaluation
     if is_reproduction:
-        for b_key in ("test_start", "test_end", "cutoff"):
-            exp_val = expected_boundaries.get(b_key)
+        for b_key, exp_val in expected_boundaries.items():
             act_val = splits.boundaries.get(b_key)
             if exp_val and act_val and exp_val != act_val:
                 raise ValueError(
@@ -354,6 +423,11 @@ def run_final_test(
         if abs(settings.target_threshold - (-0.05)) > 1e-6:
             raise ValueError(
                 f"Execution convention mismatch: expected target_threshold=-0.05, got {settings.target_threshold}. "
+                "Altered conventions cannot silently reuse a consumed holdout."
+            )
+        if settings.random_seed != 42:
+            raise ValueError(
+                f"Execution convention mismatch: expected random_seed=42, got {settings.random_seed}. "
                 "Altered conventions cannot silently reuse a consumed holdout."
             )
 
@@ -411,16 +485,43 @@ def run_final_test(
         **candidates,
     }
 
+    # Trajectory equity math for both legacy post-funding and net initial capital conventions
+    v_end = float(selected_res.daily["equity"].iloc[-1])
+    initial_cap = float(settings.initial_capital)
+    v_post_0 = float(selected_res.trades["v_post"].iloc[0]) if not selected_res.trades.empty else initial_cap
+
+    net_initial_capital_ret = (v_end - initial_cap) / initial_cap
+    legacy_post_funding_ret = (v_end - v_post_0) / v_post_0
+    funding_impact_bps = (legacy_post_funding_ret - net_initial_capital_ret) * 10000.0
+
     if is_reproduction:
         # Verify identical performance against original consumed evaluation
         original_metrics = release_data["test_evaluation"].get("test_metrics", {})
-        if "total_return" in original_metrics and original_metrics["total_return"] is not None:
-            diff = abs(selected_res.metrics["total_return"] - original_metrics["total_return"])
-            if diff > 1e-4:
+        orig_ret = original_metrics.get("total_return")
+
+        if orig_ret is not None:
+            # Check if matching under legacy_post_funding convention
+            if legacy_provenance and legacy_provenance.metric_convention == "legacy_post_funding":
+                diff = abs(legacy_post_funding_ret - orig_ret)
+                if diff > 1e-4:
+                    raise ValueError(
+                        f"Reproduction metric divergence under legacy post-funding convention: "
+                        f"computed legacy_post_funding_total_return={legacy_post_funding_ret}, "
+                        f"original={orig_ret} (diff={diff})"
+                    )
+                metric_convention = "legacy_post_funding"
+            elif abs(selected_res.metrics["total_return"] - orig_ret) <= 1e-4:
+                metric_convention = "net_initial_capital"
+            elif abs(legacy_post_funding_ret - orig_ret) <= 1e-4:
+                metric_convention = "legacy_post_funding"
+            else:
+                diff = abs(selected_res.metrics["total_return"] - orig_ret)
                 raise ValueError(
                     f"Reproduction metric divergence: computed total_return={selected_res.metrics['total_return']}, "
-                    f"original={original_metrics['total_return']} (diff={diff})"
+                    f"legacy_post_funding_total_return={legacy_post_funding_ret}, original={orig_ret} (diff={diff})"
                 )
+        else:
+            metric_convention = "net_initial_capital"
 
         metadata = {
             "pipeline_mode": "final_test_reproduction",
@@ -438,6 +539,10 @@ def run_final_test(
             "weights_fixed_baseline": settings.weights_fixed_baseline,
             "tickers": settings.tickers,
             "original_evaluated_at": release_data["test_evaluation"].get("evaluated_at"),
+            "metric_convention": metric_convention,
+            "net_initial_capital_total_return": net_initial_capital_ret,
+            "legacy_post_funding_total_return": legacy_post_funding_ret,
+            "funding_cost_impact_bps": funding_impact_bps,
         }
 
         report = build_report(all_results, test_risk, metadata)
@@ -460,6 +565,10 @@ def run_final_test(
         "weights_defensive": settings.weights_defensive,
         "weights_fixed_baseline": settings.weights_fixed_baseline,
         "tickers": settings.tickers,
+        "metric_convention": "net_initial_capital",
+        "net_initial_capital_total_return": net_initial_capital_ret,
+        "legacy_post_funding_total_return": legacy_post_funding_ret,
+        "funding_cost_impact_bps": funding_impact_bps,
     }
 
     report = build_report(all_results, test_risk, metadata)
@@ -469,6 +578,7 @@ def run_final_test(
     # Record holdout evaluation completion in release.json
     release_data["test_evaluation"] = {
         "evaluated_at": pd.Timestamp.now().isoformat(),
+        "metric_convention": "net_initial_capital",
         "test_metrics": selected_res.metrics,
     }
     rel_path.write_text(json.dumps(release_data, indent=2), encoding="utf-8")

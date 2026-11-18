@@ -54,6 +54,11 @@ def compact_view(report: Report) -> dict[str, object]:
         "selected_metrics": performance.get("selected_strategy"),
         "evaluation_partition": performance.get("evaluation_partition", "validation"),
         "identity": identity,
+        "reproduction_status": payload.get("reproduction_status") or identity.get("reproduction_status"),
+        "metric_convention": performance.get("metric_convention") or identity.get("metric_convention"),
+        "net_initial_capital_total_return": performance.get("net_initial_capital_total_return") or identity.get("net_initial_capital_total_return"),
+        "legacy_post_funding_total_return": performance.get("legacy_post_funding_total_return") or identity.get("legacy_post_funding_total_return"),
+        "funding_cost_impact_bps": performance.get("funding_cost_impact_bps") or identity.get("funding_cost_impact_bps"),
     }
 
 

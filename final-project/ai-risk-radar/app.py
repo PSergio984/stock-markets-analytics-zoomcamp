@@ -26,10 +26,10 @@ def load_report_data() -> tuple[Report | None, str | None]:
     primary_path = None
     if latest_path.exists():
         primary_path = latest_path
-    elif final_test_path.exists():
-        primary_path = final_test_path
     elif repro_test_path.exists():
         primary_path = repro_test_path
+    elif final_test_path.exists():
+        primary_path = final_test_path
     elif research_path.exists():
         primary_path = research_path
 
@@ -40,8 +40,38 @@ def load_report_data() -> tuple[Report | None, str | None]:
         with open(primary_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        # Always check reproduction report to enrich data with reproduction provenance and dual returns
+        if repro_test_path.exists():
+            try:
+                with open(repro_test_path, "r", encoding="utf-8") as rf:
+                    repro_data = json.load(rf)
+                data.setdefault(
+                    "reproduction_status",
+                    repro_data.get("reproduction_status") or repro_data.get("identity", {}).get("reproduction_status"),
+                )
+                repro_perf = repro_data.get("performance", {})
+                for k in (
+                    "metric_convention",
+                    "net_initial_capital_total_return",
+                    "legacy_post_funding_total_return",
+                    "funding_cost_impact_bps",
+                ):
+                    val = repro_perf.get(k) or repro_data.get(k) or repro_data.get("identity", {}).get(k)
+                    if val is not None:
+                        if "performance" in data and k not in data["performance"]:
+                            data["performance"][k] = val
+                        if k not in data:
+                            data[k] = val
+                data["reproduction_verified"] = True
+            except (OSError, json.JSONDecodeError):
+                pass
+
         # If primary is latest inference without performance metrics, merge from test report
-        test_source = final_test_path if final_test_path.exists() else (repro_test_path if repro_test_path.exists() else None)
+        test_source = (
+            repro_test_path
+            if repro_test_path.exists()
+            else (final_test_path if final_test_path.exists() else None)
+        )
         if (
             data.get("performance", {}).get("selected_strategy") is None
             and test_source is not None
@@ -147,11 +177,43 @@ def main() -> None:
     w_cols[2].metric("SPY (S&P 500)", f"{weights.get('SPY', 0.0):.1%}")
     w_cols[3].metric("SHY (1-3y Treasuries)", f"{weights.get('SHY', 0.0):.1%}")
 
-    # Performance Snapshot
+    # Performance Snapshot & Holdout Provenance
     metrics = c_view.get("selected_metrics")
+    repro_status = c_view.get("reproduction_status")
+    net_ret = c_view.get("net_initial_capital_total_return")
+    legacy_ret = c_view.get("legacy_post_funding_total_return")
+    funding_bps = c_view.get("funding_cost_impact_bps")
+
+    if repro_status == "verified_match":
+        st.success(
+            "✅ **Holdout Reproduction: Verified Match** — Bit-exact trajectory equivalence verified on frozen test holdout."
+        )
+
     if metrics:
         partition_name = c_view.get("evaluation_partition", "Test").title()
         st.subheader(f"📈 Performance Snapshot ({partition_name} Partition)")
+
+        if net_ret is not None or legacy_ret is not None:
+            r_cols = st.columns(3)
+            if net_ret is not None:
+                r_cols[0].metric(
+                    label="Net Initial-Capital Return",
+                    value=f"{net_ret:.1%}",
+                    help="Total return based on $10,000 initial capital.",
+                )
+            if legacy_ret is not None:
+                r_cols[1].metric(
+                    label="Original Post-Funding Return",
+                    value=f"{legacy_ret:.1%}",
+                    help="Total return based on post-funding capital after session 0 setup cost ($9,990.01; legacy convention).",
+                )
+            if funding_bps is not None:
+                r_cols[2].metric(
+                    label="Initial Setup Cost Impact",
+                    value=f"{funding_bps:.1f} bps",
+                    help="Transaction cost difference from session 0 initial portfolio funding.",
+                )
+
         p_cols = st.columns(5)
         p_cols[0].metric("CAGR", f"{metrics.get('cagr', 0.0):.1%}")
         p_cols[1].metric("Max Drawdown", f"{metrics.get('max_drawdown', 0.0):.1%}")
@@ -250,9 +312,10 @@ def main() -> None:
         # Provenance
         model_h = c_view.get("identity", {}).get("model_hash") or c_view.get("identity", {}).get("release_hash", "N/A")
         release_h = c_view.get("identity", {}).get("release_hash", "N/A")
+        repro_badge = f" | Reproduction: {repro_status}" if repro_status else ""
         st.caption(
             f"Artifact: `{filename}` | Model Hash: `{model_h[:8]}...` | Release Hash: `{release_h[:8]}...` | "
-            f"Pipeline Mode: `{c_view.get('identity', {}).get('pipeline_mode', 'N/A')}`"
+            f"Pipeline Mode: `{c_view.get('identity', {}).get('pipeline_mode', 'N/A')}`{repro_badge}"
         )
 
 

@@ -123,10 +123,16 @@ def build_report(
         "model_hash": metadata.get("model_hash") or metadata.get("release_hash"),
         "release_hash": metadata.get("release_hash"),
     }
-    if "reproduction_status" in metadata:
-        identity_dict["reproduction_status"] = metadata["reproduction_status"]
-    if "original_evaluated_at" in metadata:
-        identity_dict["original_evaluated_at"] = metadata["original_evaluated_at"]
+    for f_key in (
+        "reproduction_status",
+        "original_evaluated_at",
+        "metric_convention",
+        "net_initial_capital_total_return",
+        "legacy_post_funding_total_return",
+        "funding_cost_impact_bps",
+    ):
+        if f_key in metadata:
+            identity_dict[f_key] = metadata[f_key]
 
     payload = {
         "identity": identity_dict,
@@ -159,15 +165,25 @@ def build_report(
         "performance": {
             "evaluation_partition": metadata.get("evaluation_partition", "validation"),
             "selected_strategy": selected_metrics,
+            **({"metric_convention": metadata["metric_convention"]} if "metric_convention" in metadata else {}),
+            **({"net_initial_capital_total_return": metadata["net_initial_capital_total_return"]} if "net_initial_capital_total_return" in metadata else {}),
+            **({"legacy_post_funding_total_return": metadata["legacy_post_funding_total_return"]} if "legacy_post_funding_total_return" in metadata else {}),
+            **({"funding_cost_impact_bps": metadata["funding_cost_impact_bps"]} if "funding_cost_impact_bps" in metadata else {}),
         },
         "comparisons": comparisons,
         "diagnostics": metadata.get("diagnostics", {}),
         "limitations": limitations,
     }
-    if "reproduction_status" in metadata:
-        payload["reproduction_status"] = metadata["reproduction_status"]
-    if "original_evaluated_at" in metadata:
-        payload["original_evaluated_at"] = metadata["original_evaluated_at"]
+    for f_key in (
+        "reproduction_status",
+        "original_evaluated_at",
+        "metric_convention",
+        "net_initial_capital_total_return",
+        "legacy_post_funding_total_return",
+        "funding_cost_impact_bps",
+    ):
+        if f_key in metadata:
+            payload[f_key] = metadata[f_key]
 
     clean_payload = _clean_json_value(payload)
     return Report(payload=clean_payload)
